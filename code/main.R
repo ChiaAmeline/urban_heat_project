@@ -7,11 +7,13 @@ install.packages("measurements", dependencies = TRUE)
 install.packages("spData",dependencies = TRUE)
 
 library(tidyverse)
+library(dplyr)
 library(ggplot2)
 library(sf)
 library(tmap)
 library(measurements)
 library(spData)
+
 # 1. DATA PROCESSING
 ## Datasets merger
 
@@ -21,11 +23,14 @@ library(spData)
 ### Removing data with special characters (if required)
 
 # 2. DATA TRANSFORMATION
-### Checking and modifying the data types of each columns
-### Mathematical transformation on data columns (if required)
+## Checking and modifying the data types of each columns
+## Mathematical transformation on data columns (if required)
+
+## Spitting of data (Train and test)
 
 
-# 2. EXPLORATORY DATA ANALYSIS (EDA)
+# 3. EXPLORATORY DATA ANALYSIS (EDA)
 
 
-# 3. MODELLING ANALYSIS
+# 4. MODELLING ANALYSIS
+
