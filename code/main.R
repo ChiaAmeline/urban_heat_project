@@ -34,3 +34,6 @@ library(spData)
 
 # 4. MODELLING ANALYSIS
 
+
+#Testing >>>>>>>>>>>>>>>>>>>>>
+
