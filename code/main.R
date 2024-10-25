@@ -7,6 +7,8 @@ install.packages("measurements", dependencies = TRUE)
 install.packages("spData",dependencies = TRUE)
 install.packages("googledrive", dependencies = TRUE)
 install.packages("readxl")
+install.packages("rnaturalearth")
+install.packages("rnaturalearthdata")
 
 library(tidyverse)
 library(dplyr)
@@ -17,8 +19,10 @@ library(measurements)
 library(spData)
 library(googledrive)
 library(readxl)
+library(rnaturalearth)
+library(rnaturalearthdata)
 
-# 1. DATA CONNECTION VIA GOOGLE DRIVE
+# DATA CONNECTION VIA GOOGLE DRIVE
 
 #Using Google Drive to connect to the csv files as advised by Prof. Pls install the GoogleDrive package above before running this chunk.
 
@@ -77,8 +81,68 @@ drive_download(as_id(file_id_temp_green), path = temp_green, overwrite = TRUE)
 green_area_data <- read_excel(temp_green)
 
 
-## Datasets merger
-#test new shana
+##### File ID from Google Drive URL (For HydroLAKES_polys_v10_shp)
+#to be added https://drive.google.com/file/d/1la5j_6CXWYZ4bHbaRMacMppdaV3ojNiX/view?usp=sharing
+
+file_id_hydrolakes <- "1la5j_6CXWYZ4bHbaRMacMppdaV3ojNiX"
+
+# Download the zip file to a temporary location
+temp_zip_hydrolakes <- tempfile(fileext = ".zip")
+drive_download(as_id(file_id_hydrolakes), path = temp_zip_hydrolakes, overwrite = TRUE)
+
+# Unzip the file to a temporary directory
+temp_dir_hydrolakes <- tempdir()
+unzip(temp_zip_hydrolakes, exdir = temp_dir_hydrolakes)
+
+# Select the HydroLAKES shapefile
+shp_file <- "/var/folders/xp/0vgps1xn0lx45nm1jfnyvlrw0000gn/T//RtmpJHdXCV/HydroLAKES_polys_v10.shp"
+
+# Read the shapefile
+lakes_data <- st_read(shp_file)
+
+##### File ID from Google Drive URL (For HydroRIVERS_v10_shp)
+#to be added
+
+
+# LOAD R DATASETS
+
+#World map dataset with country polygons
+
+world_map <- ne_countries(scale = "medium", returnclass = "sf")
+View(world_map)
+
+world_cities <- ne_download(scale = "medium", type = "populated_places", category = "cultural", returnclass = "sf")
+
+# Extract city coordinates
+cities_coords <- st_coordinates(world_cities)
+
+# Add coordinates back to the world_cities data frame
+world_cities <- cbind(world_cities, cities_coords)
+
+
+## DATASETS JOIN - MAY NOT NEED TO JOIN
+
+# Rename columns for clarity
+temp_country_data <- temp_country_data %>%
+  rename(
+    country_avg_temp = AverageTemperature,
+    country_temp_uncertainty = AverageTemperatureUncertainty
+  )
+
+temp_cities_data <- temp_cities_data %>%
+  rename(
+    city_avg_temp = AverageTemperature,
+    city_temp_uncertainty = AverageTemperatureUncertainty
+  )
+
+# Join the datasets on 'dt' and 'Country'
+joined_country_city_temp <- left_join(temp_country_data, temp_cities_data, by = c("dt", "Country"))
+
+#May need to clean the joined_country_city_temp further, too many NAs. maybe can aggregate by monthly/yearly temp instead.
+
+
+
+
 
 ## Data cleaning
 ### Checking for NA / NAN / empty values
@@ -93,6 +157,23 @@ green_area_data <- read_excel(temp_green)
 
 
 # 3. EXPLORATORY DATA ANALYSIS (EDA)
+
+#TEST PLOT
+
+# Plot world map and world_cities
+ggplot() +
+  # Plot country boundaries
+  geom_sf(data = world_map, fill = "lightblue", color = "black") +
+  # Plot city locations
+  geom_point(data = world_cities, aes(x = X, y = Y), color = "red", size = 2) +
+  # Add labels for world_cities (assuming the city name column is 'name' or something similar)
+  geom_text(data = world_cities, aes(x = X, y = Y, label = NAME), 
+            hjust = 0, vjust = 1, size = 2, color = "darkred") +
+  # Set a minimal theme
+  theme_minimal() +
+  labs(title = "World Map with Cities",
+       x = "Longitude",
+       y = "Latitude")
 
 
 # 4. MODELLING ANALYSIS
