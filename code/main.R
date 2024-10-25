@@ -16,6 +16,7 @@ library(spData)
 
 # 1. DATA PROCESSING
 ## Datasets merger
+#test new shana
 
 ## Data cleaning
 ### Checking for NA / NAN / empty values
