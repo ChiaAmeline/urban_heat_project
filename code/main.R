@@ -9,6 +9,10 @@ install.packages("googledrive", dependencies = TRUE)
 install.packages("readxl")
 install.packages("rnaturalearth")
 install.packages("rnaturalearthdata")
+install.packages("lubridate")
+install.packages("plotly")
+install.packages("viridis")
+
 
 library(tidyverse)
 library(dplyr)
@@ -21,6 +25,9 @@ library(googledrive)
 library(readxl)
 library(rnaturalearth)
 library(rnaturalearthdata)
+library(lubridate)
+library(plotly)
+library(viridis)
 
 # DATA CONNECTION VIA GOOGLE DRIVE
 
@@ -313,12 +320,51 @@ ggplot() +
        y = "Latitude")
 
 
+#Plotting average temp by country and city (1970 to 1980)
+
+# Convert 'dt' columns to Date format
+temp_country_data$dt <- as.Date(temp_country_data$dt)
+temp_cities_data$dt <- as.Date(temp_cities_data$dt)
+
+# Extract the year from the 'dt' column using lubridate
+temp_country_data$year <- year(temp_country_data$dt)
+temp_cities_data$year <- year(temp_cities_data$dt)
+
+# Filter the data for years between 1970 and 1980
+filtered_country_data <- temp_country_data %>%
+  filter(year >= 1970 & year <= 1980)
+
+filtered_city_data <- temp_cities_data %>%
+  filter(year >= 1970 & year <= 1980)
+
+# Aggregate the temperature by country (mean temperature for each country)
+country_avg_temp <- filtered_country_data %>%
+  group_by(Country) %>%
+  summarise(avg_temp = mean(country_avg_temp, na.rm = TRUE))
+
+# Aggregate the temperature by city (mean temperature for each city)
+city_avg_temp <- filtered_city_data %>%
+  group_by(City, Country, Latitude, Longitude) %>%
+  summarise(avg_temp = mean(city_avg_temp, na.rm = TRUE))
+
+# Plot the map with country temperatures
+ggplot() +
+  # Add the world map, filling by average country temperature
+  geom_sf(data = world_map, aes(fill = avg_temp), color = "black") +
+  scale_fill_viridis_c(option = "plasma", name = "Country Temp") +
+  # Add points for city temperatures
+  geom_point(data = city_avg_temp, aes(x = Longitude, y = Latitude, color = avg_temp), size = 2) +
+  scale_color_viridis_c(option = "magma", name = "City Temp") +
+  theme_minimal() +
+  labs(title = "World Map with Country and City Temperatures",
+       x = "Longitude",
+       y = "Latitude") +
+  coord_sf(lims_method = "geometry_bbox", default_crs = NULL)
+
 # 4. MODELLING ANALYSIS
 
 
 #Testing >>>>>>>>>>>>>>>>>>>>>
 
-#test something rp
-#test another line
 # to use KDE contour plots for temperature density etc.
 
