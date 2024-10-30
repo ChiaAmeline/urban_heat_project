@@ -30,8 +30,6 @@ library(rnaturalearthdata)
 file_id_temp_cities <- "17lPSwGwt5HTMbIiaTkotfmuKlkKZAPcM"
 
 # Download the file to a temporary location
-temp_cities <- tempfile(fileext = ".csv")
-drive_download(as_id(file_id_temp_cities), path = temp_cities, overwrite = TRUE)
 
 
 # Read the CSV file from the temporary location
@@ -103,6 +101,25 @@ lakes_data <- st_read(shp_file)
 ##### File ID from Google Drive URL (For HydroRIVERS_v10_shp)
 #to be added
 
+#################################################################################################################
+# Manually loading the dataset from my working directory
+# GlobalLandTemperaturesByCity
+temp_cities_data <- read.csv("GlobalLandTemperaturesByCity.csv")
+
+# GlobalLandTemperaturesByCountry
+temp_country_data <- read.csv("GlobalLandTemperaturesByCountry.csv")
+
+# world_population
+population_data <- read.csv("world_population.csv")
+
+# energy
+energy_data <- read.csv("energy.csv")
+
+green_area_data <- read_excel("Share_of_green_areas_and_green_area_per_capita_in_cities_and_urban_areas_1990_-_2020.xlsx")
+
+lakes_data <- st_read("HydroLAKES_polys_v10.shp")
+
+#################################################################################################################
 
 # LOAD R DATASETS
 
@@ -142,22 +159,142 @@ joined_country_city_temp <- left_join(temp_country_data, temp_cities_data, by = 
 
 
 
-
-
 ## Data cleaning
 ### Checking for NA / NAN / empty values
 ### Removing data that doesnt value add the analysis (if required)
 ### Removing data with special characters (if required)
 
+# Remove rows with NA values
+cleaned_temp_data <- drop_na(joined_country_city_temp)
+
 # 2. DATA TRANSFORMATION
 ## Checking and modifying the data types of each columns
 ## Mathematical transformation on data columns (if required)
+
+# Convert 'dt' to Date
+cleaned_temp_data$dt <- as.Date(cleaned_temp_data$dt)
+
+# Function to clean Latitude
+#might need to wokr on this
+clean_latitude <- function(lat) {
+  lat <- trimws(lat)                      # Remove leading/trailing whitespace
+  lat <- gsub("N$", "", lat)               # Remove 'N' at the end
+  lat <- gsub("S$", "-", lat)              # Replace 'S' at the end with negative sign
+  lat <- gsub("[^0-9.\\-]", "", lat)      # Remove any non-numeric characters except '-' and '.'
+  as.numeric(lat)                         # Convert to numeric
+}
+
+# Function to clean Longitude
+clean_longitude <- function(lon) {
+  lon <- trimws(lon)                      # Remove leading/trailing whitespace
+  lon <- gsub("E$", "", lon)               # Remove 'E' at the end
+  lon <- gsub("W$", "-", lon)              # Replace 'W' at the end with negative sign
+  lon <- gsub("[^0-9.\\-]", "", lon)      # Remove any non-numeric characters except '-' and '.'
+  as.numeric(lon)                         # Convert to numeric
+}
+
+# Apply the cleaning functions
+cleaned_temp_data$Latitude <- clean_latitude(cleaned_temp_data$Latitude)
+cleaned_temp_data$Longitude <- clean_longitude(cleaned_temp_data$Longitude)
+
+
 
 ## Spitting of data (Train and test)
 
 
 # 3. EXPLORATORY DATA ANALYSIS (EDA)
 
+#########################################
+#some random plotting
+
+# Histogram for Country Average Temperature
+ggplot(cleaned_temp_data, aes(x = country_avg_temp)) +
+  geom_histogram(binwidth = 1, fill = "skyblue", color = "black") +
+  labs(title = "Distribution of Country Average Temperature", x = "Country Avg Temp", y = "Count")
+
+# Histogram for City Average Temperature
+ggplot(cleaned_temp_data, aes(x = city_avg_temp)) +
+  geom_histogram(binwidth = 1, fill = "salmon", color = "black") +
+  labs(title = "Distribution of City Average Temperature", x = "City Avg Temp", y = "Count")
+
+
+# Boxplot for Country Average Temperature
+ggplot(cleaned_temp_data, aes(y = country_avg_temp)) +
+  geom_boxplot(fill = "lightyellow") +
+  labs(title = "Boxplot of Country Average Temperature", y = "Country Avg Temp")
+
+# Boxplot for City Average Temperature
+ggplot(cleaned_temp_data, aes(y = city_avg_temp)) +
+  geom_boxplot(fill = "lightgreen") +
+  labs(title = "Boxplot of City Average Temperature", y = "City Avg Temp")
+
+
+# Correlation matrix
+cor_matrix <- cor(cleaned_temp_data %>% select(country_avg_temp, city_avg_temp, country_temp_uncertainty, city_temp_uncertainty), use = "complete.obs")
+
+# Visualize the correlation matrix
+library(corrplot)
+corrplot(cor_matrix, method = "circle")
+
+# Average temperature by Country
+avg_temp_country <- cleaned_temp_data %>%
+  group_by(Country) %>%
+  summarise(mean_country_temp = mean(country_avg_temp, na.rm = TRUE)) %>%
+  arrange(desc(mean_country_temp))
+
+# View the top 10 countries
+head(avg_temp_country, 10)
+
+#monthly
+avg_temp_monthly <- cleaned_temp_data %>%
+  group_by(month = floor_date(dt, "month")) %>%
+  summarise(mean_temp = mean(city_avg_temp, na.rm = TRUE))
+
+# Plotting average temperature by month
+ggplot(avg_temp_monthly, aes(x = month, y = mean_temp)) +
+  geom_line(color = "blue") +
+  labs(title = "Average City Temperature Over Time (Monthly)", x = "Month", y = "Average Temperature") +
+  theme_minimal()
+
+
+#yearly
+avg_temp_yearly <- cleaned_temp_data %>%
+  group_by(year = year(dt)) %>%
+  summarise(mean_temp = mean(city_avg_temp, na.rm = TRUE))
+
+# Plotting average temperature by year
+ggplot(avg_temp_yearly, aes(x = year, y = mean_temp)) +
+  geom_line(color = "blue") +
+  labs(title = "Average City Temperature Over Time (Yearly)", x = "Year", y = "Average Temperature") +
+  theme_minimal()
+
+
+
+
+
+###Plotting world map with avg country temp
+
+# Aggregate temperature data across all years for each country
+  overall_avg_temp <- cleaned_temp_data %>%
+       group_by(Country) %>%
+       summarise(avg_temp = mean(city_avg_temp, na.rm = TRUE))
+ 
+   # Join with world shapefile data
+   world_temp <- world %>%
+       inner_join(overall_avg_temp, by = c("name" = "Country"))
+ 
+   # Plot the map
+   ggplot(data = world_temp) +
+       geom_sf(aes(fill = avg_temp), color = "gray70") +
+       scale_fill_viridis_c(option = "plasma", name = "Avg Temp (°C)", na.value = "lightgray") +
+       labs(title = "Average Temperature by Country", x = "Longitude", y = "Latitude") +
+       theme_minimal() +
+       geom_hline(yintercept = 0, color = "red", linetype = "dashed") +  # Equator line
+       coord_sf(ylim = c(-60, 90))  # Limit latitude to -60, 90 to avoid polar distortion
+
+   
+####################################################################################   
+   
 #TEST PLOT
 
 # Plot world map and world_cities
