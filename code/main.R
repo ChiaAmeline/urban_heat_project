@@ -13,7 +13,6 @@ install.packages("lubridate")
 install.packages("plotly")
 install.packages("viridis")
 
-
 library(tidyverse)
 library(dplyr)
 library(ggplot2)
@@ -35,49 +34,38 @@ library(viridis)
 
 ##### File ID from Google Drive URL (For GlobalLandTemperaturesByCity)
 file_id_temp_cities <- "17lPSwGwt5HTMbIiaTkotfmuKlkKZAPcM"
-
 # Download the file to a temporary location
-
-
+temp_cities <- tempfile(fileext = ".csv")
+drive_download(as_id(file_id_temp_cities), path = temp_cities, overwrite = TRUE)
 # Read the CSV file from the temporary location
 temp_cities_data <- read.csv(temp_cities)
 
 ##### File ID from Google Drive URL (For GlobalLandTemperaturesByCountry)
 file_id_temp_country <- "1eUG98W8Mz6OURXim17SEYiFFtsz3oGpG"
-
 # Download the file to a temporary location
 temp_country <- tempfile(fileext = ".csv")
 drive_download(as_id(file_id_temp_country), path = temp_country, overwrite = TRUE)
-
-
 # Read the CSV file from the temporary location
 temp_country_data <- read.csv(temp_country)
 
 ##### File ID from Google Drive URL (For world_population)
 file_id_temp_pop <- "1sAMaGYknHeDDwdTICCsqgfWBXcmw5Wtl"
-
 # Download the file to a temporary location
 temp_pop <- tempfile(fileext = ".csv")
 drive_download(as_id(file_id_temp_pop), path = temp_pop, overwrite = TRUE)
-
 # Read the CSV file from the temporary location
 population_data <- read.csv(temp_pop)
 
-
 ##### File ID from Google Drive URL (For energy)
 file_id_temp_energy <- "1Oha-hiaJZCH9d4jJW-SN5GqcUJew9s1Z"
-
 # Download the file to a temporary location
 temp_energy <- tempfile(fileext = ".csv")
 drive_download(as_id(file_id_temp_energy), path = temp_energy, overwrite = TRUE)
-
 # Read the CSV file from the temporary location
 energy_data <- read.csv(temp_energy)
 
-
 ##### File ID from Google Drive URL (For Share_of_green_areas_and_green_area_per_capita_in_cities_and_urban_areas_1990_-_2020)
 file_id_temp_green <- "1Yu75p6z9dXVbfIe9n2rb9QU7YBntvsyz"
-
 # Download the file to a temporary location with .xlsx extension
 temp_green <- tempfile(fileext = ".xlsx")
 drive_download(as_id(file_id_temp_green), path = temp_green, overwrite = TRUE)
@@ -165,46 +153,78 @@ joined_country_city_temp <- left_join(temp_country_data, temp_cities_data, by = 
 #May need to clean the joined_country_city_temp further, too many NAs. maybe can aggregate by monthly/yearly temp instead.
 
 
-
 ## Data cleaning
 ### Checking for NA / NAN / empty values
-### Removing data that doesnt value add the analysis (if required)
-### Removing data with special characters (if required)
-
+### Identifying overlapping dates across all cities to standardize the dataset and minimize data biasness
 # Remove rows with NA values
 cleaned_temp_data <- drop_na(joined_country_city_temp)
+# Checking and removing duplicated values if there are any
+print(paste("Total number of duplicated records: ", nrow(cleaned_temp_data[duplicated(cleaned_temp_data), ])))
+unique_city_per_dt <- cleaned_temp_data %>% group_by(City) %>% summarise(nrows_per_dt = n_distinct(dt), .groups = 'drop')
+# Plotting bar chart to visually check if the cities have differing dates (randomly sampling 50 records as there are too much datapoints to plot)
+set.seed(1234)
+limit_unique_city_per_dt <- unique_city_per_dt %>% sample_n(50)
+ggplot(limit_unique_city_per_dt, aes(x = City, y = nrows_per_dt, fill = City)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Total Number of Unique Dates by Cites",  x = "City", y = "Number of Unique Dates") +   
+  geom_text(aes(label = nrows_per_dt), position = position_stack(vjust = 1.05), angle = 90, size = 2.5,fontface = "bold") + 
+  theme_minimal() + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+# Finding overlapping dates
+unique_dt_per_city <- cleaned_temp_data %>% group_by(dt) %>% summarise(nrows_per_city = n_distinct(City), .groups = 'drop')
+distinct_cities <- n_distinct(cleaned_temp_data$City)
+overlapping_dt <- unique_dt_per_city %>%  filter(nrows_per_city == distinct_cities) %>% pull(dt)
+# Removing non-overlapping dates
+cleaned_temp_data <- cleaned_temp_data %>% filter(dt %in% overlapping_dt)
+unique_city_per_dt <- cleaned_temp_data %>% group_by(City) %>% summarise(nrows_per_dt = n_distinct(dt), .groups = 'drop')
+set.seed(1234)
+limit_unique_city_per_dt <- unique_city_per_dt %>% sample_n(50)
+# Replotting to check if the cities still have differing dates
+ggplot(limit_unique_city_per_dt, aes(x = City, y = nrows_per_dt, fill = City)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Total Number of Unique Dates by Cites",  x = "City", y = "Number of Unique Dates") +   
+  geom_text(aes(label = nrows_per_dt), position = position_stack(vjust = 1.05), angle = 90, size = 2.5,fontface = "bold") + 
+  theme_minimal() + theme(axis.text.x = element_text(angle = 90, hjust = 1))
 
 # 2. DATA TRANSFORMATION
 ## Checking and modifying the data types of each columns
-## Mathematical transformation on data columns (if required)
+## Mathematical transformation on data columns (Exponentially Weighted Average)
 
 # Convert 'dt' to Date
 cleaned_temp_data$dt <- as.Date(cleaned_temp_data$dt)
-
 # Function to clean Latitude
 #might need to wokr on this
 clean_latitude <- function(lat) {
   lat <- trimws(lat)                      # Remove leading/trailing whitespace
-  lat <- gsub("N$", "", lat)               # Remove 'N' at the end
-  lat <- gsub("S$", "-", lat)              # Replace 'S' at the end with negative sign
+  lat <- gsub("N$", "\\1", lat)               # Remove 'N' at the end
+  lat <- gsub("S$", "-\\1", lat)              # Replace 'S' at the end and add a negative sign infront
   lat <- gsub("[^0-9.\\-]", "", lat)      # Remove any non-numeric characters except '-' and '.'
   as.numeric(lat)                         # Convert to numeric
 }
-
 # Function to clean Longitude
 clean_longitude <- function(lon) {
   lon <- trimws(lon)                      # Remove leading/trailing whitespace
-  lon <- gsub("E$", "", lon)               # Remove 'E' at the end
-  lon <- gsub("W$", "-", lon)              # Replace 'W' at the end with negative sign
+  lon <- gsub("E$", "\\1", lon)               # Remove 'E' at the end
+  lon <- gsub("W$", "-\\1", lon)              # Replace 'W' at the end and add a negative sign infront
   lon <- gsub("[^0-9.\\-]", "", lon)      # Remove any non-numeric characters except '-' and '.'
   as.numeric(lon)                         # Convert to numeric
 }
-
-# Apply the cleaning functions
+# Apply the cleaning functions and removing NA's due to coercion
 cleaned_temp_data$Latitude <- clean_latitude(cleaned_temp_data$Latitude)
 cleaned_temp_data$Longitude <- clean_longitude(cleaned_temp_data$Longitude)
 
-
+# Function to calculate the weighted average temperature (placing greater emphasis on dates that are closer to the max date -> 1/(2^N))
+weighted_avg_func <- function(avg_temperatures, date){
+  ref_date <- max(cleaned_temp_data$dt)
+  # Calculate the difference (in days) between date against max date
+  # The return value will always be positive as the present date is always later than any dates in our data set
+  day_diff <- as.numeric(difftime(ref_date, date, units = "days"))
+  # Adjusting the weight to years, as using days is too restrictive
+  day_diff <- day_diff/365
+  w <- 1/(2^day_diff)
+  weighted_temp <- round((avg_temperatures * w), 10)
+  return(weighted_temp)
+}
+cleaned_temp_data$weighted_city_avg_temp <- weighted_avg_func(cleaned_temp_data$city_avg_temp, cleaned_temp_data$dt)
 
 ## Spitting of data (Train and test)
 
@@ -212,8 +232,6 @@ cleaned_temp_data$Longitude <- clean_longitude(cleaned_temp_data$Longitude)
 # 3. EXPLORATORY DATA ANALYSIS (EDA)
 
 #########################################
-#some random plotting
-
 # Histogram for Country Average Temperature
 ggplot(cleaned_temp_data, aes(x = country_avg_temp)) +
   geom_histogram(binwidth = 1, fill = "skyblue", color = "black") +
@@ -276,32 +294,29 @@ ggplot(avg_temp_yearly, aes(x = year, y = mean_temp)) +
   theme_minimal()
 
 
-
-
-
 ###Plotting world map with avg country temp
 
 # Aggregate temperature data across all years for each country
-  overall_avg_temp <- cleaned_temp_data %>%
-       group_by(Country) %>%
-       summarise(avg_temp = mean(city_avg_temp, na.rm = TRUE))
- 
-   # Join with world shapefile data
-   world_temp <- world %>%
-       inner_join(overall_avg_temp, by = c("name" = "Country"))
- 
-   # Plot the map
-   ggplot(data = world_temp) +
-       geom_sf(aes(fill = avg_temp), color = "gray70") +
-       scale_fill_viridis_c(option = "plasma", name = "Avg Temp (°C)", na.value = "lightgray") +
-       labs(title = "Average Temperature by Country", x = "Longitude", y = "Latitude") +
-       theme_minimal() +
-       geom_hline(yintercept = 0, color = "red", linetype = "dashed") +  # Equator line
-       coord_sf(ylim = c(-60, 90))  # Limit latitude to -60, 90 to avoid polar distortion
+overall_avg_temp <- cleaned_temp_data %>%
+  group_by(Country) %>%
+  summarise(avg_temp = mean(city_avg_temp, na.rm = TRUE))
 
-   
+# Join with world shapefile data
+world_temp <- world %>%
+  inner_join(overall_avg_temp, by = c("name" = "Country"))
+
+# Plot the map
+ggplot(data = world_temp) +
+  geom_sf(aes(fill = avg_temp), color = "gray70") +
+  scale_fill_viridis_c(option = "plasma", name = "Avg Temp (°C)", na.value = "lightgray") +
+  labs(title = "Average Temperature by Country", x = "Longitude", y = "Latitude") +
+  theme_minimal() +
+  geom_hline(yintercept = 0, color = "red", linetype = "dashed") +  # Equator line
+  coord_sf(ylim = c(-60, 90))  # Limit latitude to -60, 90 to avoid polar distortion
+
+
 ####################################################################################   
-   
+
 #TEST PLOT
 
 # Plot world map and world_cities
