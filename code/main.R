@@ -404,5 +404,10 @@ ggplot() +
 
 #Testing >>>>>>>>>>>>>>>>>>>>>
 
+
+# 5. SPATIAL ANALYTICS
+
+
+
 # to use KDE contour plots for temperature density etc.
 
