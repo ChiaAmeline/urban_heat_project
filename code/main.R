@@ -75,22 +75,45 @@ green_area_data <- read_excel(temp_green)
 
 
 ##### File ID from Google Drive URL (For HydroLAKES_polys_v10_shp)
-#to be added https://drive.google.com/file/d/1la5j_6CXWYZ4bHbaRMacMppdaV3ojNiX/view?usp=sharing
+### Commented out cause not possible to unzip and open all files in the folder
+# #to be added https://drive.google.com/file/d/1la5j_6CXWYZ4bHbaRMacMppdaV3ojNiX/view?usp=sharing
+# 
+# file_id_hydrolakes <- "1la5j_6CXWYZ4bHbaRMacMppdaV3ojNiX"
+# 
+# # Download the zip file to a temporary location
+# temp_zip_hydrolakes <- tempfile(fileext = ".zip")
+# drive_download(as_id(file_id_hydrolakes), path = temp_zip_hydrolakes, overwrite = TRUE)
+# 
+# # Unzip the file to a temporary directory
+# temp_dir_hydrolakes <- tempdir()
+# unzip(temp_zip_hydrolakes, exdir = temp_dir_hydrolakes)
+# 
+# # Select the HydroLAKES shapefile
+# shp_file <- "/var/folders/xp/0vgps1xn0lx45nm1jfnyvlrw0000gn/T//RtmpJHdXCV/HydroLAKES_polys_v10.shp"
+# 
+# # Read the shapefile
+# lakes_data <- st_read(shp_file)
 
+# Google Drive File ID for the HydroLAKES zip file
 file_id_hydrolakes <- "1la5j_6CXWYZ4bHbaRMacMppdaV3ojNiX"
 
-# Download the zip file to a temporary location
+# Step 1: Download the zip file to a temporary location
 temp_zip_hydrolakes <- tempfile(fileext = ".zip")
 drive_download(as_id(file_id_hydrolakes), path = temp_zip_hydrolakes, overwrite = TRUE)
 
-# Unzip the file to a temporary directory
+# Step 2: Unzip the file to a temporary directory
 temp_dir_hydrolakes <- tempdir()
 unzip(temp_zip_hydrolakes, exdir = temp_dir_hydrolakes)
 
-# Select the HydroLAKES shapefile
-shp_file <- "/var/folders/xp/0vgps1xn0lx45nm1jfnyvlrw0000gn/T//RtmpJHdXCV/HydroLAKES_polys_v10.shp"
+# Step 3: Locate the .shp file within the unzipped files
+shp_file <- list.files(temp_dir_hydrolakes, pattern = "\\.shp$", full.names = TRUE)
 
-# Read the shapefile
+# Ensure only one .shp file is found; if not, stop with an error
+if (length(shp_file) != 1) {
+  stop("Error: Multiple or no .shp files found in the directory.")
+}
+
+# Step 4: Load the shapefile
 lakes_data <- st_read(shp_file)
 
 ##### File ID from Google Drive URL (For HydroRIVERS_v10_shp)
