@@ -155,7 +155,6 @@ joined_country_city_temp <- left_join(temp_country_data, temp_cities_data, by = 
 ### Checking for NA / NAN / empty values
 ## Checking and modifying the data types of each columns
 ### Identifying overlapping dates across all cities to standardize the dataset and minimize data biasness
-cleaned_temp_data <- read.csv("cleaned_temp_data.csv")
 # Remove rows with NA values
 cleaned_temp_data <- drop_na(joined_country_city_temp)
 # Checking that lat is within -90 and 90 and log is within -18- and 180
