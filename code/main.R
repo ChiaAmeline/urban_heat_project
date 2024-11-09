@@ -313,13 +313,13 @@ overall_avg_temp <- cleaned_temp_data %>%
   summarise(avg_temp = mean(city_avg_temp, na.rm = TRUE))
 
 # Join with world shapefile data
-world_temp <- world %>%
+world_temp <- world_map %>%
   inner_join(overall_avg_temp, by = c("name" = "Country"))
 
 # Plot the map
 ggplot(data = world_temp) +
   geom_sf(aes(fill = avg_temp), color = "gray70") +
-  scale_fill_viridis_c(option = "plasma", name = "Avg Temp (°C)", na.value = "lightgray") +
+  scale_fill_viridis_c(option = "plasma", name = "Avg Temp (?C)", na.value = "lightgray") +
   labs(title = "Average Temperature by Country", x = "Longitude", y = "Latitude") +
   theme_minimal() +
   geom_hline(yintercept = 0, color = "red", linetype = "dashed") +  # Equator line
@@ -389,9 +389,112 @@ ggplot() +
 
 # 4. MODELLING ANALYSIS
 
-## Spitting of data (Train and test)
+####################################################################
+# Average temp of specific year (2010)
+overall_avg_temp_2010 <- cleaned_temp_data %>%
+  filter(year == 2010) %>%
+  group_by(Country) %>%
+  summarise(avg_temp = mean(city_avg_temp, na.rm = TRUE))
 
-#Testing >>>>>>>>>>>>>>>>>>>>>
+# Join with world shapefile data
+world_temp_2010 <- world_map %>%
+  inner_join(overall_avg_temp_2010, by = c("name" = "Country"))
+
+# Create a center point for the countries to display on map
+world_temp_centerpoint <- world_temp %>%
+  st_centroid() %>%
+  mutate(
+    x = st_coordinates(.)[, 1],
+    y = st_coordinates(.)[, 2]
+  )
+
+# Add 2010 PoP to the countries centerpoints with temperature data to find relationship
+world_temp_and_pop_2010 <- world_temp_centerpoint %>%
+  left_join(population_data %>% select('Country.Territory', 'X2010.Population'), by = c("name" = "Country.Territory"))
+
+
+# Plot the map
+ggplot() +
+  geom_sf(data = world_temp_2010, aes(fill = avg_temp), color = "gray70") +
+  geom_point(data = world_temp_and_pop_2010, aes(x = x, y = y, size = X2010.Population), color = "cyan", alpha = 0.8) +
+  scale_fill_viridis_c(option = "plasma", name = "Avg Temp (?C)", na.value = "lightgray") +
+  scale_size(range = c(0.5, 5), name = "Population") +
+  labs(title = "Average Temperature by Country with Population in 2010", x = "Longitude", y = "Latitude") +
+  theme_minimal() +
+  geom_hline(yintercept = 0, color = "red", linetype = "dashed") +  # Equator line
+  coord_sf(ylim = c(-60, 90))
+
+# Scatter plot to see if there is relationship between pop and temp, NO CORRELATION OBSERVED
+ggplot(data = world_temp_and_pop_2010, aes(x = X2010.Population, y = avg_temp)) +
+  geom_point(color = "cyan4", alpha = 0.6) +
+  labs(title = "Relationship Between Population and Average Temperature 2010",
+       x = "Population",
+       y = "Average Temperature") 
+
+#++++++++++++++++++++++++++++++++++++++++++++++++
+
+# Average temp of specific year 1970
+overall_avg_temp_1970 <- cleaned_temp_data %>%
+  filter(year == 1970) %>%
+  group_by(Country) %>%
+  summarise(avg_temp = mean(city_avg_temp, na.rm = TRUE))
+
+# Join with world shapefile data
+world_temp_1970 <- world_map %>%
+  inner_join(overall_avg_temp_1970, by = c("name" = "Country"))
+
+# Add 1970 PoP to the countries centerpoints with temperature data to find relationship
+world_temp_and_pop_1970 <- world_temp_centerpoint %>%
+  left_join(population_data %>% select('Country.Territory', 'X1970.Population'), by = c("name" = "Country.Territory"))
+
+# Plot the map
+ggplot() +
+  geom_sf(data = world_temp_1970, aes(fill = avg_temp), color = "gray70") +
+  geom_point(data = world_temp_and_pop_1970, aes(x = x, y = y, size = X1970.Population), color = "cyan", alpha = 0.8) +
+  scale_fill_viridis_c(option = "plasma", name = "Avg Temp (?C)", na.value = "lightgray") +
+  scale_size(range = c(0.5, 5), name = "Population") +
+  labs(title = "Average Temperature by Country with Population in 1970", x = "Longitude", y = "Latitude") +
+  theme_minimal() +
+  geom_hline(yintercept = 0, color = "red", linetype = "dashed") +  # Equator line
+  coord_sf(ylim = c(-60, 90))
+
+# Scatter plot to see if there is relationship between pop and temp, NO CORRELATION OBSERVED
+ggplot(data = world_temp_and_pop_1970, aes(x = X1970.Population, y = avg_temp)) +
+  geom_point(color = "cyan4", alpha = 0.6) +
+  labs(title = "Relationship Between Population and Average Temperature",
+       x = "Population",
+       y = "Average Temperature")
+
+##########################################################
+#Find green area by country
+country_green_area_2010 <- green_area_data %>%
+  mutate(`Average share of green area in city/ urban area 2010 (%)` = as.numeric(`Average share of green area in city/ urban area 2010 (%)`)) %>%
+  group_by(`Country or Territory Name`) %>%
+  summarise(avg_green_area = mean(`Average share of green area in city/ urban area 2010 (%)`, na.rm = TRUE))
+
+# Add 2010 green to the countries centerpoints with temperature data to find relationship
+world_temp_and_green_2010 <- world_temp_centerpoint %>%
+  left_join(country_green_area_2010 %>% select(`Country or Territory Name`, `avg_green_area`), by = c("name" = "Country or Territory Name"))
+
+
+# Plot the map
+ggplot() +
+  geom_sf(data = world_temp_2010, aes(fill = avg_temp), color = "gray70") +
+  geom_point(data = world_temp_and_green_2010, aes(x = x, y = y, size = avg_green_area), color = "green4", alpha = 0.8) +
+  scale_fill_viridis_c(option = "plasma", name = "Avg Temp (?C)", na.value = "lightgray") +
+  scale_size(range = c(0.5, 5), name = "Greens") +
+  labs(title = "Average Temperature by Country with Greens in 2010", x = "Longitude", y = "Latitude") +
+  theme_minimal() +
+  geom_hline(yintercept = 0, color = "red", linetype = "dashed") +  # Equator line
+  coord_sf(ylim = c(-60, 90))
+
+# Scatter plot to see if there is relationship between green and temp, HAVE SOME RELATIONSHIP TRENDS BUT NOT STRONG
+ggplot(data = world_temp_and_green_2010, aes(x = avg_green_area, y = avg_temp)) +
+  geom_point(color = "cyan4", alpha = 0.6) +
+  labs(title = "Relationship Between Greens and Average Temperature 2010",
+       x = "Greens",
+       y = "Average Temperature") 
+
 
 
 # 5. SPATIAL ANALYTICS
