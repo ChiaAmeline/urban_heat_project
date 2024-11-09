@@ -13,6 +13,17 @@ install.packages("lubridate")
 install.packages("plotly")
 install.packages("viridis")
 install.packages("corrplot")
+install.packages("spatstat")
+install.packages("eks")
+install.packages("ks")    
+install.packages("tmap")
+install.packages("spdep")
+install.packages("spatialreg")
+install.packages("GWmodel")
+install.packages("patchwork")
+
+
+
 
 library(tidyverse)
 library(dplyr)
@@ -29,6 +40,15 @@ library(lubridate)
 library(plotly)
 library(viridis)
 library(corrplot)
+library(spatstat)
+library(eks)
+library(ks)
+library(tmap)
+library(spdep)
+library(spatialreg)
+library(GWmodel)
+library(patchwork)
+
 
 # DATA CONNECTION VIA GOOGLE DRIVE
 
@@ -242,6 +262,14 @@ weighted_avg_func <- function(avg_temperatures, date){
 }
 cleaned_temp_data$weighted_city_avg_temp <- mapply(weighted_avg_func, avg_temperatures = cleaned_temp_data$city_avg_temp, date = cleaned_temp_data$dt)
 
+# Extract the year from the date column
+cleaned_temp_data$year <- format(cleaned_temp_data$dt, "%Y")
+
+# Group by City and Year to calculate yearly weighted temperatures for each city. needed for spatial analysis.
+yearly_weighted_temp <- cleaned_temp_data %>%
+  group_by(City, year, Longitude, Latitude) %>%
+  summarise(yearly_weighted_temp = sum(weighted_city_avg_temp, na.rm = TRUE), .groups = 'drop')
+
 # 3. EXPLORATORY DATA ANALYSIS (EDA)
 
 #########################################
@@ -441,7 +469,335 @@ ggplot(data = world_temp_and_green_2010, aes(x = avg_green_area, y = avg_temp)) 
 
 # 5. SPATIAL ANALYTICS
 
+# Plot temperature points directly on world map
+ggplot() +
+  # Plot the world map polygons as background
+  geom_sf(data = world_map_df, fill = "grey80", color = "white") +
+  # Plot the points with color indicating temperature
+  geom_point(data = temp_points_2010s, aes(x = Longitude, y = Latitude, color = city_avg_temp), 
+             size = 1, alpha = 0.8) +
+  scale_color_viridis_c(option = "magma", name = "City Avg Temp (°C)") +
+  theme_minimal() +
+  labs(title = "City Temperature Across the World (2010s)",
+       x = "Longitude",
+       y = "Latitude")
+
+##Point Pattern Analysis
+
+# Filter data for the 2010s only
+temp_data_2010s <- cleaned_temp_data %>%
+  filter(year >= 2010 & year <= 2019) %>%
+  dplyr::select(Longitude, Latitude, city_avg_temp)
+
+# Convert to sf object for spatial processing
+temp_points_sf <- st_as_sf(temp_data_2010s, coords = c("Longitude", "Latitude"), crs = 4326)
+
+# Extract Longitude and Latitude from geometry and filter based on their ranges
+temp_points_sf <- temp_points_sf %>%
+  mutate(Longitude = st_coordinates(geometry)[, 1],
+         Latitude = st_coordinates(geometry)[, 2]) %>%
+  filter(Latitude >= -90, Latitude <= 90, Longitude >= -180, Longitude <= 180)
+
+# Extract coordinates from temp_points_sf
+coords <- st_coordinates(temp_points_sf)
+
+# Compute the bandwidth matrix
+H <- Hpi(coords)
+
+# Perform KDE using the specified bandwidth matrix
+temp_kde <- st_kde(temp_points_sf, H = H)
+
+# Extract contour lines at specified levels
+contours <- st_get_contour(temp_kde, cont = c(10, 25, 50, 75, 95))
+
+# Ensure contlabel is a factor for discrete coloring
+contours$contlabel <- as.factor(contours$contlabel)
+
+# Plotting with ggplot2
+ggplot() +
+  # World map as background
+  geom_sf(data = world_map, fill = "grey80", color = "white") +
+  # Temperature points
+  geom_sf(data = temp_points_sf, aes(color = city_avg_temp), size = 1, alpha = 0.7) +
+  # Density contours
+  geom_sf(data = contours, aes(fill = contlabel), color = "black", linetype = "solid") +
+  # Color scales
+  scale_color_viridis_c(name = "City Avg Temp (°C)") +
+  scale_fill_viridis_d(name = "Density Contours") +
+  # Labels and theme
+  labs(title = "City Temperature Density and Contour Analysis (2010s)", 
+       x = "Longitude", y = "Latitude") +
+  theme_minimal()
+
+####
+
+# tmap version
+
+# Filter data for the 2010s only
+temp_data_2010s <- cleaned_temp_data %>%
+  filter(year >= 2010 & year <= 2019) %>%
+  dplyr::select(Longitude, Latitude, city_avg_temp)
+
+# Remove rows with NA values in Longitude, Latitude, or city_avg_temp
+temp_data_2010s <- temp_data_2010s %>%
+  filter(!is.na(Longitude), !is.na(Latitude), !is.na(city_avg_temp))
+
+# Convert to sf object for spatial processing
+temp_points_sf <- st_as_sf(temp_data_2010s, coords = c("Longitude", "Latitude"), crs = 4326)
+
+# Extract Longitude and Latitude from geometry and filter based on their ranges
+temp_points_sf <- temp_points_sf %>%
+  mutate(Longitude = st_coordinates(geometry)[, 1],
+         Latitude = st_coordinates(geometry)[, 2]) %>%
+  filter(Latitude >= -90, Latitude <= 90, Longitude >= -180, Longitude <= 180)
+
+# Compute KDE (assuming `temp_kde` has been calculated separately as an sf object with contours)
+contours <- st_get_contour(temp_kde, cont = c(10, 25, 50, 75, 95))
+contours$contlabel <- as.factor(contours$contlabel)
+
+# Set tmap mode to plot
+tmap_mode("plot")
+
+# Create the tmap plot
+tm_shape(world_map) +
+  tm_polygons(col = "grey80", border.col = "white") +
+  tm_shape(temp_points_sf) +
+  tm_dots(col = "city_avg_temp", palette = "viridis", size = 0.5, alpha = 0.7, title = "City Avg Temp (°C)") +
+  tm_shape(contours) +
+  tm_polygons(col = "contlabel", palette = "viridis", title = "Density Contours", alpha = 0.5) +
+  tm_layout(title = "City Temperature Density and Contour Analysis (2010s)",
+            legend.outside = TRUE,
+            legend.outside.position = "right",
+            frame = FALSE)
 
 
-# to use KDE contour plots for temperature density etc.
+### Second Order Point Pattern Analysis
+
+
+# Convert temperature points to a spatial weights object for Moran's I
+coords <- st_coordinates(temp_points_sf)
+
+# Convert to spatstat ppp object
+# Define the study window (bounding box) based on your dataset extent
+bbox <- st_bbox(temp_points_sf)
+temp_ppp <- ppp(
+  x = st_coordinates(temp_points_sf)[, 1],
+  y = st_coordinates(temp_points_sf)[, 2],
+  window = owin(xrange = c(bbox["xmin"], bbox["xmax"]), yrange = c(bbox["ymin"], bbox["ymax"]))
+)
+
+# Calculate Ripley's K-function
+K_result <- Kest(temp_ppp, correction = "Ripley")
+
+# Plot Ripley's K-function
+plot(K_result, main = "Ripley's K-function for Temperature Points",
+     xlab = "Distance", ylab = "K(d)")
+
+# Calculate and plot the L-function
+L_result <- Lest(temp_ppp, correction = "Ripley")
+plot(L_result, main = "L-function for Temperature Points",
+     xlab = "Distance", ylab = "L(d) - d")
+
+# Generate envelopes for the K-function with simulations under CSR
+K_envelope <- envelope(temp_ppp, Kest, nsim = 999, correction = "Ripley")
+
+# Plot with envelopes
+plot(K_envelope, main = "Ripley's K-function with Envelope Analysis",
+     xlab = "Distance", ylab = "K(d)")
+
+# Generate envelopes for the L-function with simulations under CSR
+L_envelope <- envelope(temp_ppp, Lest, nsim = 999, correction = "Ripley")
+
+# Plot with envelopes
+plot(L_envelope, main = "L-function with Envelope Analysis",
+     xlab = "Distance", ylab = "L(d) - d")
+
+# Perform the MAD test for Ripley’s K-function
+mad_K <- mad.test(temp_ppp, Kest)
+print(mad_K)
+
+# Perform the MAD test for the L-function
+mad_L <- mad.test(temp_ppp, Lest)
+print(mad_L)
+
+### Spatial Attribute Analysis & Spatial Autocorrelation Analysis
+
+#Filter cleaned_temp_data to include only rows from 2010 to 2019
+cleaned_temp_data_2010s <- cleaned_temp_data %>%
+  filter(year >= 2010 & year <= 2019)
+
+#Rename and select relevant columns in population_data
+population_data <- population_data %>%
+  rename(Country = Country.Territory, Population_2015 = X2015.Population) %>%
+  select(Country, Population_2015)
+
+#Join population_data to cleaned_temp_data_2010s
+# and filter out rows with missing Population_2015
+cleaned_temp_data_2010s <- cleaned_temp_data_2010s %>%
+  left_join(population_data, by = "Country") %>%
+  filter(!is.na(Population_2015))
+
+# Sum energy consumption for each country and year
+total_energy_data <- energy_data %>%
+  group_by(Country, Year) %>%
+  summarize(Total_Energy_Consumption = sum(Energy_consumption, na.rm = TRUE)) %>%
+  ungroup()  # Remove grouping for further analysis
+
+# Convert `Year` in `total_energy_data` to character
+total_energy_data <- total_energy_data %>%
+  mutate(Year = as.character(Year))
+
+# Perform the join
+cleaned_temp_data_2010s <- cleaned_temp_data_2010s %>%
+  left_join(total_energy_data, by = c("Country", "year" = "Year"))
+
+# Remove rows with NA in Total_Energy_Consumption
+cleaned_temp_data_2010s <- cleaned_temp_data_2010s %>%
+  filter(!is.na(Total_Energy_Consumption))
+
+# Create neighbors list and weight matrix
+neighbors <- poly2nb(data)  # Using Queen's case for adjacency
+weights <- nb2listw(neighbors, style = "W")  # Weights style "W" (row-standardized)
+
+### Data prep
+
+# Convert cleaned_temp_data_2010s to an sf object
+cleaned_temp_data_2010s_sf <- st_as_sf(cleaned_temp_data_2010s, 
+                                       coords = c("Longitude", "Latitude"), 
+                                       crs = 4326)  # Adjust CRS if needed
+
+# Check the structure to ensure it's spatial
+print(cleaned_temp_data_2010s_sf)
+
+# Create neighbors list using distance (e.g., within 500 km)
+coords <- st_coordinates(cleaned_temp_data_2010s_sf)
+
+## Unable to process all points, due R memory limit.
+# neighbors <- dnearneigh(coords, 0, 500000)  # Adjust distance threshold as needed (in meters)
+# # Reduce the distance threshold to 100 km (100,000 meters)
+# neighbors <- dnearneigh(coords, 0, 100000)  # Adjust as needed
+# weights <- nb2listw(neighbors, style = "W")  # Row-standardized weights
+
+# Randomly sample 10% of the points for analysis
+set.seed(42)  # For reproducibility
+sample_data <- cleaned_temp_data_2010s_sf %>%
+  sample_frac(0.1)
+
+# Extract coordinates for the sampled data
+coords_sample <- st_coordinates(sample_data)
+
+# Create neighbors and weights for the sample data
+neighbors_sample <- dnearneigh(coords_sample, 0, 100000)  # Adjust distance as needed
+weights_sample <- nb2listw(neighbors_sample, style = "W")
+
+# # Moran's I for city_avg_temp in the sample
+# moran_temp_sample <- moran.test(sample_data$city_avg_temp, weights_sample)
+# print(moran_temp_sample)
+# 
+# # Moran's I for Population_2015 in the sample
+# moran_pop_sample <- moran.test(sample_data$Population_2015, weights_sample)
+# print(moran_pop_sample)
+# 
+# # Moran's I for Total_Energy_Consumption in the sample
+# moran_energy_sample <- moran.test(sample_data$Total_Energy_Consumption, weights_sample)
+# print(moran_energy_sample)
+
+# Convert `sample_data` from `sf` to `sp`
+sample_data_sp <- as(sample_data, "Spatial")
+
+# Find optimal bandwidth
+optimal_bw <- bw.gwr(city_avg_temp ~ Population_2015 + Total_Energy_Consumption, 
+                     data = sample_data_sp, approach = "AICc")  # 'AICc' minimizes Akaike Information Criterion
+
+# Run GWR using the optimal bandwidth
+gwr_model <- gwr.basic(city_avg_temp ~ Population_2015 + Total_Energy_Consumption, 
+                       data = sample_data_sp, bw = optimal_bw)
+print(gwr_model)
+
+# Add GWR coefficients back to the data
+sample_data$gwr_pop_coef <- gwr_model$SDF$Population_2015
+sample_data$gwr_energy_coef <- gwr_model$SDF$Total_Energy_Consumption
+
+library(tmap)
+
+# Updated Plot for Population Density Coefficient
+tm_shape(world_map) + 
+  tm_polygons(col = "grey90", border.col = "white", lwd = 0.5) +  # Base world map with borders
+  tm_shape(sample_data) +
+  tm_dots("gwr_pop_coef", 
+          palette = "RdYlGn",  # Use a lighter, high-contrast palette
+          title = "Population Density Coef", 
+          size = 0.2,           # Increase point size slightly
+          border.col = NA,      # Remove borders on points
+          alpha = 0.7) + 
+  tm_layout(main.title = "GWR Coefficient for Population Density on Temperature",
+            legend.outside = TRUE,
+            inner.margins = c(0.05, 0.05, 0.05, 0.05))  # Adjust margins
+
+# Updated Plot for Energy Consumption Coefficient
+tm_shape(world_map) + 
+  tm_polygons(col = "grey90", border.col = "white", lwd = 0.5) +  # Base world map with borders
+  tm_shape(sample_data) +
+  tm_dots("gwr_energy_coef", 
+          palette = "Spectral",  # Another high-contrast palette with varied colors
+          title = "Energy Consumption Coef", 
+          size = 0.2,           # Increase point size slightly
+          border.col = NA,      # Remove borders on points
+          alpha = 0.7) + 
+  tm_layout(main.title = "GWR Coefficient for Energy Consumption on Temperature",
+            legend.outside = TRUE,
+            inner.margins = c(0.05, 0.05, 0.05, 0.05))  # Adjust margins
+
+
+### Plots
+
+# Moran's I plot for city_avg_temp in the sample
+# moran.plot(cleaned_temp_data_2010s$city_avg_temp, weights_sample, main = "Moran's I Scatterplot for City Avg Temperature")
+
+# Calculate spatial lag for city_avg_temp
+sample_data$lagged_temp <- lag.listw(weights_sample, sample_data$city_avg_temp)
+
+# Convert sample data to an sf object if not already
+sample_data_sf <- st_as_sf(sample_data, coords = c("Longitude", "Latitude"), crs = 4326)
+
+# Plot for City Average Temperature
+city_avg_plot <- ggplot() +
+  geom_sf(data = world_map, fill = "gray90", color = "gray50") +
+  geom_sf(data = sample_data_sf, aes(color = city_avg_temp), size = 1.5) +
+  scale_color_viridis_c(option = "C", name = "City Avg Temperature", 
+                        limits = c(-30, 40),  # Adjust limits based on your data
+                        breaks = seq(-30, 40, by = 10)) +
+  labs(title = "City Average Temperature in Sampled Data") +
+  theme_minimal() +
+  theme(legend.position = "right")
+
+# Plot for Spatially Lagged Temperature
+lagged_temp_plot <- ggplot() +
+  geom_sf(data = world_map, fill = "gray90", color = "gray50") +
+  geom_sf(data = sample_data_sf, aes(color = lagged_temp), size = 1.5) +
+  scale_color_viridis_c(option = "C", name = "Lagged Temperature", 
+                        limits = c(18.494, 18.499),  # Adjust limits based on your data
+                        breaks = seq(18.494, 18.499, by = 0.001)) +
+  labs(title = "Spatially Lagged Temperature") +
+  theme_minimal() +
+  theme(legend.position = "right")
+
+# Display plots side by side if needed (using patchwork)
+city_avg_plot + lagged_temp_plot
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
