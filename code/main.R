@@ -12,6 +12,9 @@ install.packages("rnaturalearthdata")
 install.packages("lubridate")
 install.packages("plotly")
 install.packages("viridis")
+install.packages("scales")
+install.packages("readr")
+install.packages("rlang")
 
 library(tidyverse)
 library(dplyr)
@@ -27,6 +30,9 @@ library(rnaturalearthdata)
 library(lubridate)
 library(plotly)
 library(viridis)
+library(scales)
+library(readr)
+library(rlang)
 
 # DATA CONNECTION VIA GOOGLE DRIVE
 
@@ -36,7 +42,7 @@ download_file_fun <- function(file_id) {
   temp_file <- tempfile(fileext = ".csv")
   drive_download(as_id(file_id), path = temp_file, overwrite = TRUE)
   # Read the CSV file from the temporary location
-  return(read.csv(temp_file))
+  return(read_csv(temp_file))
 }
 
 ##### File ID from Google Drive URL (For GlobalLandTemperaturesByCity)
@@ -48,7 +54,10 @@ population_data <- download_file_fun("1sAMaGYknHeDDwdTICCsqgfWBXcmw5Wtl")
 ##### File ID from Google Drive URL (For energy)
 energy_data <- download_file_fun("1Oha-hiaJZCH9d4jJW-SN5GqcUJew9s1Z")
 ##### File ID from Google Drive URL (For Share_of_green_areas_and_green_area_per_capita_in_cities_and_urban_areas_1990_-_2020)
-green_area_data <- download_file_fun("1Yu75p6z9dXVbfIe9n2rb9QU7YBntvsyz")
+file_id_temp_green <- "1Yu75p6z9dXVbfIe9n2rb9QU7YBntvsyz"
+temp_green <-  tempfile(fileext = ".xlsx")
+drive_download(as_id(file_id_temp_green), path = temp_green, overwrite = TRUE)
+green_area_data <- read_excel(temp_green)
 
 ##### File ID from Google Drive URL (For HydroLAKES_polys_v10_shp)
 ### Commented out cause not possible to unzip and open all files in the folder
@@ -71,26 +80,26 @@ green_area_data <- download_file_fun("1Yu75p6z9dXVbfIe9n2rb9QU7YBntvsyz")
 # lakes_data <- st_read(shp_file)
 
 # Google Drive File ID for the HydroLAKES zip file
-file_id_hydrolakes <- "1la5j_6CXWYZ4bHbaRMacMppdaV3ojNiX"
-
-# Step 1: Download the zip file to a temporary location
-temp_zip_hydrolakes <- tempfile(fileext = ".zip")
-drive_download(as_id(file_id_hydrolakes), path = temp_zip_hydrolakes, overwrite = TRUE)
-
-# Step 2: Unzip the file to a temporary directory
-temp_dir_hydrolakes <- tempdir()
-unzip(temp_zip_hydrolakes, exdir = temp_dir_hydrolakes)
-
-# Step 3: Locate the .shp file within the unzipped files
-shp_file <- list.files(temp_dir_hydrolakes, pattern = "\\.shp$", full.names = TRUE)
-
-# Ensure only one .shp file is found; if not, stop with an error
-if (length(shp_file) != 1) {
-  stop("Error: Multiple or no .shp files found in the directory.")
-}
-
-# Step 4: Load the shapefile
-lakes_data <- st_read(shp_file)
+# file_id_hydrolakes <- "1la5j_6CXWYZ4bHbaRMacMppdaV3ojNiX"
+# 
+# # Step 1: Download the zip file to a temporary location
+# temp_zip_hydrolakes <- tempfile(fileext = ".zip")
+# drive_download(as_id(file_id_hydrolakes), path = temp_zip_hydrolakes, overwrite = TRUE)
+# 
+# # Step 2: Unzip the file to a temporary directory
+# temp_dir_hydrolakes <- tempdir()
+# unzip(temp_zip_hydrolakes, exdir = temp_dir_hydrolakes)
+# 
+# # Step 3: Locate the .shp file within the unzipped files
+# shp_file <- list.files(temp_dir_hydrolakes, pattern = "\\.shp$", full.names = TRUE)
+# 
+# # Ensure only one .shp file is found; if not, stop with an error
+# if (length(shp_file) != 1) {
+#   stop("Error: Multiple or no .shp files found in the directory.")
+# }
+# 
+# # Step 4: Load the shapefile
+# lakes_data <- st_read(shp_file)
 
 ##### File ID from Google Drive URL (For HydroRIVERS_v10_shp)
 #to be added
@@ -132,7 +141,6 @@ world_cities <- cbind(world_cities, cities_coords)
 
 
 ## DATASETS JOIN - MAY NOT NEED TO JOIN
-
 # Rename columns for clarity
 temp_country_data <- temp_country_data %>%
   rename(
@@ -155,18 +163,29 @@ joined_country_city_temp <- left_join(temp_country_data, temp_cities_data, by = 
 ### Checking for NA / NAN / empty values
 ## Checking and modifying the data types of each columns
 ### Identifying overlapping dates across all cities to standardize the dataset and minimize data biasness
+### Transpose population data
+population_data <- population_data %>%
+  pivot_longer(
+    cols = ends_with("Population"),          
+    names_to = "Year",                       
+    names_prefix = "",                       
+    values_to = "Population"                
+  ) %>% mutate( Year = as.integer(sub(" Population", "", Year)))
+
 # Remove rows with NA values
-cleaned_temp_data <- drop_na(joined_country_city_temp)
+cleaned_temp_data <- joined_country_city_temp %>% drop_na()
+population_data <- population_data %>% drop_na()
+energy_data <- energy_data %>% drop_na()
+green_area_data <- green_area_data %>% drop_na()
 # Checking that lat is within -90 and 90 and log is within -18- and 180
 lat_pat <- "^(-?([0-9]{1,2}(\\.\\d+)?))([NS])?$"
 lon_pat <- "^(-?([0-9]{1,3}(\\.\\d+)?))([EW])?$"
-cleaned_temp_data <- cleaned_temp_data %>%  filter(grepl(lat_pat, Latitude), grepl(lon_pat, Longitude))
+cleaned_temp_data <- cleaned_temp_data %>% filter(grepl(lat_pat, Latitude), grepl(lon_pat, Longitude))
 # Checking and removing duplicated values if there are any
 print(paste("Total number of duplicated records: ", nrow(cleaned_temp_data[duplicated(cleaned_temp_data), ])))
 # Convert 'dt' to Date
 cleaned_temp_data$dt <- as.Date(cleaned_temp_data$dt)
 # Feature engineering a new column for data transformation
-# Extract the year using format()
 cleaned_temp_data$year <- format(cleaned_temp_data$dt, "%Y")
 cleaned_temp_data$year <- as.numeric(cleaned_temp_data$year)
 # Function to clean Latitude
@@ -194,16 +213,16 @@ clean_longitude <- function(lon) {
   lon <- as.numeric(lon)                  # Convert to numeric
   return(lon)
 }
-# Apply the cleaning functions and removing NA's due to coercion
+# Apply the cleaning functions
 cleaned_temp_data$Latitude <- sapply(cleaned_temp_data$Latitude, clean_latitude)
 cleaned_temp_data$Longitude <- sapply(cleaned_temp_data$Longitude, clean_longitude)
 # Plotting bar chart to visually check if the cities have differing dates (randomly sampling 100000 records as there are too much data points to plot)
-choropleth_fun <- function(data){
+unique_dt_map_fun <- function(data){
   set.seed(1234)
-  unique_city_per_dt <- data %>% group_by(City) %>% summarise(nrows_per_dt = n_distinct(dt), .groups = 'drop', Longitude = Longitude, Latitude = Latitude)
+  unique_city_per_dt <- data %>% group_by(City) %>% reframe(nrows_per_dt = n_distinct(dt), Longitude = Longitude, Latitude = Latitude)
   limit_unique_city_per_dt <- unique_city_per_dt %>% sample_n(100000)
   ggplot(limit_unique_city_per_dt) + borders("world", colour = "gray80", fill = "gray90") +
-    geom_point(aes(x = Longitude, y = Latitude, color = nrows_per_dt), alpha = 0.7,  size = 3) +
+    geom_point(aes(x = Longitude, y = Latitude, color = nrows_per_dt), alpha = 0.7, size = 2) +
     scale_color_viridis_c() + coord_sf(datum = st_crs(4326), crs = "+proj=moll") + 
     labs(
       title = "Total Number of Unique Dates by City",
@@ -213,34 +232,108 @@ choropleth_fun <- function(data){
     ) +
     theme_minimal()
 }
-choropleth_fun(cleaned_temp_data)
+unique_dt_map_fun(cleaned_temp_data)
 # Finding overlapping dates
 unique_dt_per_city <- cleaned_temp_data %>% group_by(dt) %>% summarise(nrows_per_city = n_distinct(City), .groups = 'drop')
 distinct_cities <- n_distinct(cleaned_temp_data$City)
-overlapping_dt <- unique_dt_per_city %>%  filter(nrows_per_city == distinct_cities) %>% pull(dt)
+overlapping_dt <- unique_dt_per_city %>%filter(nrows_per_city == distinct_cities) %>% pull(dt)
 # Removing non-overlapping dates
 cleaned_temp_data <- cleaned_temp_data %>% filter(dt %in% overlapping_dt)
-unique_city_per_dt <- cleaned_temp_data %>% group_by(City) %>% summarise(nrows_per_dt = n_distinct(dt), .groups = 'drop')
 # Replotting to check if the cities still have differing dates
-choropleth_fun(cleaned_temp_data)
+unique_dt_map_fun(cleaned_temp_data)
 
 # 2. DATA TRANSFORMATION
 ## Mathematical transformation on data columns (Exponentially Weighted Average)
 # Function to calculate the weighted average temperature (placing greater emphasis on dates that are closer to present date -> 1/(2^index))
 unique_years <- unique(cleaned_temp_data$year)
 unique_years <- sort(unique_years, decreasing = TRUE)
+cleaned_temp_data$decade <- floor(cleaned_temp_data$year / 10) * 10
+avg_temp_across_decade <- cleaned_temp_data %>% group_by(decade, City, Longitude, Latitude) %>% reframe(avg_temp = mean(city_avg_temp, na.rm = TRUE))
 
-weighted_avg_func <- function(avg_temperatures, date){
-  year <- format(date, "%Y")
-  year <- as.numeric(year)
+ggplot(avg_temp_across_decade) +
+  borders("world", colour = "gray80", fill = "gray90") +
+  geom_point(aes(x = Longitude, y = Latitude, color = avg_temp), size = 1, alpha = 0.7) +
+  scale_color_viridis_c(name = "Avg Temp (°C)", limits = c(10, 25), oob = squish) + 
+  labs(
+    title = "Average Temperature by City Across Decades",
+    x = "Longitude",
+    y = "Latitude"
+  ) +
+  facet_wrap(~ decade, ncol = 5) +
+  theme_minimal() +
+  theme(
+    strip.text = element_text(size = 8),
+    plot.title = element_text(hjust = 0.5),
+    legend.position = "right"
+  )
+
+weighted_avg_func <- function(avg_temperatures, year){
   index <- match(year, unique_years)
   w <- 1/(2^index)
-  weighted_temp <- round((avg_temperatures * w), 10)
+  weighted_temp <- (avg_temperatures * w)
   return(weighted_temp)
 }
-cleaned_temp_data$weighted_city_avg_temp <- mapply(weighted_avg_func, avg_temperatures = cleaned_temp_data$city_avg_temp, date = cleaned_temp_data$dt)
+cleaned_temp_data$weighted_city_avg_temp <- mapply(weighted_avg_func, avg_temperatures = cleaned_temp_data$city_avg_temp, year = cleaned_temp_data$year)
 
 # 3. EXPLORATORY DATA ANALYSIS (EDA)
+## Plotting population throughout the decades
+avail_pop_years <- population_data %>% group_by(Year) %>% summarise(n = n())
+filtered_cleaned_temp_with_population_years <- cleaned_temp_data %>% filter(year %in% avail_pop_years$Year)
+joined_city_pop_df <- inner_join(filtered_cleaned_temp_with_population_years, population_data, by = c("year" = "Year", "Country" = "Country/Territory"))
+select_col_of_joined_city_pop_df <- joined_city_pop_df %>% select(Country,Population, decade) %>% group_by(Country,Population, decade) %>% summarise(n=n(), .groups = 'drop')
+joined_city_pop_geo_df <- world_map %>% inner_join(select_col_of_joined_city_pop_df, by = c("name" = "Country"))
+
+ggplot(joined_city_pop_geo_df) +
+  geom_sf(aes(fill = Population), color = "white", size = 0.1) +
+  scale_fill_viridis_c(
+    name = "Population",
+    option = "C",
+    na.value = "grey90",
+    limits = c(0, max(joined_city_pop_geo_df$Population, na.rm = TRUE)),
+    oob = squish
+  ) +
+  facet_wrap(~ decade, ncol = 2) +
+  labs(
+    title = "Population by Country Across Decades",
+    x = "Longitude",
+    y = "Latitude"
+  ) +
+  theme_minimal() +
+  theme(
+    strip.text = element_text(size = 8),
+    plot.title = element_text(hjust = 0.5),
+    legend.position = "right"
+  )
+## Plotting energy throughout the decades
+# avail_energy_years <- energy_data %>% group_by(Year, Country) %>% summarise(Energy_consumption = sum(Energy_consumption, na.rm = TRUE), .groups = "drop")
+# filtered_cleaned_temp_with_energy_years <- cleaned_temp_data %>% filter(year %in% avail_energy_years$Year)
+# joined_city_energy_df <- inner_join(filtered_cleaned_temp_with_energy_years, energy_data,by = c("year" = "Year", "Country" = "Country"))
+# select_col_of_joined_city_energy_df <- joined_city_energy_df %>% select(Country, Energy_consumption, decade)
+# min_world_map <- world_map %>% select(name, geometry)
+# joined_city_energy_geo_df <- min_world_map %>% inner_join(select_col_of_joined_city_energy_df, by = c("name" = "Country"))
+# joined_city_energy_geo_df <-  joined_city_energy_geo_df %>% distinct()
+# 
+# ggplot(joined_city_energy_geo_df) +
+#   geom_sf(aes(fill = Energy_consumption), color = "white", size = 0.1) +
+#   scale_fill_viridis_c(
+#     name = "Energy Consumption",
+#     option = "C",
+#     na.value = "grey90",
+#     limits = c(0, max(joined_city_energy_geo_df$Energy_consumption, na.rm = TRUE)),
+#     oob = squish
+#   ) +
+#   facet_wrap(~ decade, ncol = 5) +
+#   labs(
+#     title = "Energy Consumption by Country Across Decades",
+#     x = "Longitude",
+#     y = "Latitude"
+#   ) +
+#   theme_minimal() +
+#   theme(
+#     strip.text = element_text(size = 8),
+#     plot.title = element_text(hjust = 0.5),
+#     legend.position = "right"
+#   )
 
 #########################################
 # Histogram for Country Average Temperature

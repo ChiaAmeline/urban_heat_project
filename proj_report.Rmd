@@ -1,0 +1,191 @@
+---
+title: "Urban Heat Island Effect Project Report"
+author:
+- CHIA YUE ZHU AMELINE, A0211277L
+- GOH WEI JIE DARREN , A0265959E 
+- RAKHSHANA PARVEEN , A0227119H 
+- WILLIAM JOSE , A0245394X 
+date: "2024-11-17"
+output:
+  word_document:
+    reference_docx: TBA2014_custom_template.docx
+---
+
+```{r setup, include=FALSE}
+options(repos = c(CRAN = "https://cloud.r-project.org"))
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# INTRODUCTION
+
+# BACKGROUND
+
+# DATA
+
+## STEP 01 - DATA COLLECTION
+
+```{r echo=FALSE, warning = FALSE, message = FALSE, include=FALSE}
+# Import of libraries
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(sf)
+library(tmap)
+library(measurements)
+library(spData)
+library(googledrive)
+library(readxl)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(lubridate)
+library(plotly)
+library(viridis)
+library(readr)
+library(rlang)
+
+# Downloading the dataset from Google drive using the following function
+download_file_fun <- function(file_id) {
+  # Download the file to the temporary location
+  temp_file <- tempfile(fileext = ".csv")
+  drive_download(as_id(file_id), path = temp_file, overwrite = TRUE)
+  # Read the CSV file from the temporary location
+  return(read_csv(temp_file))
+}
+
+# File ID from Google Drive URL (For GlobalLandTemperaturesByCity)
+temp_cities_data <- download_file_fun("17lPSwGwt5HTMbIiaTkotfmuKlkKZAPcM")
+# File ID from Google Drive URL (For GlobalLandTemperaturesByCountry)
+temp_country_data <- download_file_fun("1eUG98W8Mz6OURXim17SEYiFFtsz3oGpG")
+# File ID from Google Drive URL (For world_population)
+population_data <- download_file_fun("1sAMaGYknHeDDwdTICCsqgfWBXcmw5Wtl")
+# File ID from Google Drive URL (For energy)
+energy_data <- download_file_fun("1Oha-hiaJZCH9d4jJW-SN5GqcUJew9s1Z")
+# File ID from Google Drive URL (For Share_of_green_areas_and_green_area_per_capita_in_cities_and_urban_areas_1990_-_2020)
+file_id_temp_green <- "1Yu75p6z9dXVbfIe9n2rb9QU7YBntvsyz"
+temp_green <-  tempfile(fileext = ".xlsx")
+drive_download(as_id(file_id_temp_green), path = temp_green, overwrite = TRUE)
+green_area_data <- read_excel(temp_green)
+
+# Load world and class data from packages
+world_map <- ne_countries(scale = "medium", returnclass = "sf")
+world_cities <- ne_download(scale = "medium", type = "populated_places", category = "cultural", returnclass = "sf")
+cities_coords <- st_coordinates(world_cities)
+world_cities <- cbind(world_cities, cities_coords)
+```
+
+----- Explanation ------
+
+## STEP 02 - DATA CLEANING AND TRANSFORMATION
+
+### DATA CLEANING
+```{r echo=FALSE, warning = FALSE, message = FALSE, include=FALSE}
+# Rename columns for clarity
+temp_country_data <- temp_country_data %>%
+  rename(
+    country_avg_temp = AverageTemperature,
+    country_temp_uncertainty = AverageTemperatureUncertainty
+  )
+temp_cities_data <- temp_cities_data %>%
+  rename(
+    city_avg_temp = AverageTemperature,
+    city_temp_uncertainty = AverageTemperatureUncertainty
+  )
+# Combine country and city data
+joined_country_city_temp <- left_join(temp_country_data, temp_cities_data, by = c("dt", "Country"))
+# Transpose population data
+population_data <- population_data %>% pivot_longer(
+    cols = ends_with("Population"),          
+    names_to = "Year",                       
+    names_prefix = "",                       
+    values_to = "Population"                
+  ) %>% mutate( Year = as.integer(sub(" Population", "", Year)))
+# Remove rows with NA values
+cleaned_temp_data <- joined_country_city_temp %>% drop_na()
+# Checking that lat is within -90 and 90 and log is within -18- and 180
+lat_pat <- "^(-?([0-9]{1,2}(\\.\\d+)?))([NS])?$"
+lon_pat <- "^(-?([0-9]{1,3}(\\.\\d+)?))([EW])?$"
+cleaned_temp_data <- cleaned_temp_data %>% filter(grepl(lat_pat, Latitude), grepl(lon_pat, Longitude))
+# Checking and removing duplicated values if there are any
+print(paste("Total number of duplicated records: ", nrow(cleaned_temp_data[duplicated(cleaned_temp_data), ])))
+# Convert 'dt' to Date
+cleaned_temp_data$dt <- as.Date(cleaned_temp_data$dt)
+# Function to clean Latitude
+clean_latitude <- function(lat) {
+  lat <- trimws(lat)                      # Remove leading/trailing whitespace
+  lat <- gsub("N$", "", lat)              # Remove 'N' at the end
+  lat <- gsub("S$", "-", lat)             # Replace 'S' at the end and add a negative sign infront
+  if (grepl("-$", lat)) {
+    lat <- paste0("-", sub("-$", "", lat))
+  }
+  lat <- gsub("[^0-9.\\-]", "", lat)      # Remove any non-numeric characters except '-' and '.'
+  lat <- as.numeric(lat)                  # Convert to numeric
+  return(lat)
+}
+# Function to clean Longitude
+clean_longitude <- function(lon) {
+  lon <- trimws(lon)                      # Remove leading/trailing whitespace
+  lon <- gsub("E$", "", lon)              # Remove 'E' at the end
+  lon <- gsub("W$", "-", lon)             # Replace 'W' at the end and add a negative sign infront
+  lon <- sub("^-", "-", lon)
+  if (grepl("-$", lon)) {
+    lon <- paste0("-", sub("-$", "", lon))
+  }
+  lon <- gsub("[^0-9.\\-]", "", lon)      # Remove any non-numeric characters except '-' and '.'
+  lon <- as.numeric(lon)                  # Convert to numeric
+  return(lon)
+}
+# Apply the cleaning functions
+cleaned_temp_data$Latitude <- sapply(cleaned_temp_data$Latitude, clean_latitude)
+cleaned_temp_data$Longitude <- sapply(cleaned_temp_data$Longitude, clean_longitude)
+# Plotting bar chart to visually check if the cities have differing dates (randomly sampling 100000 records as there are too much data points to plot)
+unique_dt_map_fun <- function(data){
+  set.seed(1234)
+  unique_city_per_dt <- data %>% group_by(City) %>% reframe(nrows_per_dt = n_distinct(dt), Longitude = Longitude, Latitude = Latitude)
+  limit_unique_city_per_dt <- unique_city_per_dt %>% sample_n(100000)
+  ggplot(limit_unique_city_per_dt) + borders("world", colour = "gray80", fill = "gray90") +
+    geom_point(aes(x = Longitude, y = Latitude, color = nrows_per_dt), alpha = 0.7, size = 2) +
+    scale_color_viridis_c() + coord_sf(datum = st_crs(4326), crs = "+proj=moll") + 
+    labs(
+      title = "Total Number of Unique Dates by City",
+      x = "Longitude",
+      y = "Latitude",
+      color = "Count of Dates"
+    ) +
+    theme_minimal()
+}
+unique_dt_map_fun(cleaned_temp_data)
+# Finding overlapping dates
+unique_dt_per_city <- cleaned_temp_data %>% group_by(dt) %>% summarise(nrows_per_city = n_distinct(City), .groups = 'drop')
+distinct_cities <- n_distinct(cleaned_temp_data$City)
+overlapping_dt <- unique_dt_per_city %>%filter(nrows_per_city == distinct_cities) %>% pull(dt)
+# Removing non-overlapping dates
+cleaned_temp_data <- cleaned_temp_data %>% filter(dt %in% overlapping_dt)
+# Replotting to check if the cities still have differing dates
+unique_dt_map_fun(cleaned_temp_data)
+```
+
+----- Explanation ------
+
+## DATA TRANSFORMATION
+
+----- Explanation ------
+
+# EXPLORATORY DATA ANALYSIS
+
+----- Explanation ------
+
+# METHODS AND MODELINGS
+
+----- Explanation ------
+
+# ANALYSIS
+
+----- Explanation ------
+
+# CONCLUSION
+
+----- Explanation ------
+
+# EXTRA MILE
+
+----- Explanation ------
