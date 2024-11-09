@@ -598,19 +598,22 @@ L_result <- Lest(temp_ppp, correction = "Ripley")
 plot(L_result, main = "L-function for Temperature Points",
      xlab = "Distance", ylab = "L(d) - d")
 
+
+## Dont run, takes too long, result quite similar to previous
+
 # Generate envelopes for the K-function with simulations under CSR
-K_envelope <- envelope(temp_ppp, Kest, nsim = 999, correction = "Ripley")
-
-# Plot with envelopes
-plot(K_envelope, main = "Ripley's K-function with Envelope Analysis",
-     xlab = "Distance", ylab = "K(d)")
-
-# Generate envelopes for the L-function with simulations under CSR
-L_envelope <- envelope(temp_ppp, Lest, nsim = 999, correction = "Ripley")
-
-# Plot with envelopes
-plot(L_envelope, main = "L-function with Envelope Analysis",
-     xlab = "Distance", ylab = "L(d) - d")
+# K_envelope <- envelope(temp_ppp, Kest, nsim = 999, correction = "Ripley")
+# 
+# # Plot with envelopes
+# plot(K_envelope, main = "Ripley's K-function with Envelope Analysis",
+#      xlab = "Distance", ylab = "K(d)")
+# 
+# # Generate envelopes for the L-function with simulations under CSR
+# L_envelope <- envelope(temp_ppp, Lest, nsim = 999, correction = "Ripley")
+# 
+# # Plot with envelopes
+# plot(L_envelope, main = "L-function with Envelope Analysis",
+#      xlab = "Distance", ylab = "L(d) - d")
 
 # Perform the MAD test for Ripley’s K-function
 mad_K <- mad.test(temp_ppp, Kest)
