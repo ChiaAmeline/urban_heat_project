@@ -12,6 +12,7 @@ install.packages("rnaturalearthdata")
 install.packages("lubridate")
 install.packages("plotly")
 install.packages("viridis")
+install.packages("corrplot")
 
 library(tidyverse)
 library(dplyr)
@@ -27,6 +28,7 @@ library(rnaturalearthdata)
 library(lubridate)
 library(plotly)
 library(viridis)
+library(corrplot)
 
 # DATA CONNECTION VIA GOOGLE DRIVE
 
@@ -69,28 +71,28 @@ green_area_data <- download_file_fun("1Yu75p6z9dXVbfIe9n2rb9QU7YBntvsyz")
 # 
 # # Read the shapefile
 # lakes_data <- st_read(shp_file)
-
-# Google Drive File ID for the HydroLAKES zip file
-file_id_hydrolakes <- "1la5j_6CXWYZ4bHbaRMacMppdaV3ojNiX"
-
-# Step 1: Download the zip file to a temporary location
-temp_zip_hydrolakes <- tempfile(fileext = ".zip")
-drive_download(as_id(file_id_hydrolakes), path = temp_zip_hydrolakes, overwrite = TRUE)
-
-# Step 2: Unzip the file to a temporary directory
-temp_dir_hydrolakes <- tempdir()
-unzip(temp_zip_hydrolakes, exdir = temp_dir_hydrolakes)
-
-# Step 3: Locate the .shp file within the unzipped files
-shp_file <- list.files(temp_dir_hydrolakes, pattern = "\\.shp$", full.names = TRUE)
-
-# Ensure only one .shp file is found; if not, stop with an error
-if (length(shp_file) != 1) {
-  stop("Error: Multiple or no .shp files found in the directory.")
-}
+# 
+# # Google Drive File ID for the HydroLAKES zip file
+# file_id_hydrolakes <- "1la5j_6CXWYZ4bHbaRMacMppdaV3ojNiX"
+# 
+# # Step 1: Download the zip file to a temporary location
+# temp_zip_hydrolakes <- tempfile(fileext = ".zip")
+# drive_download(as_id(file_id_hydrolakes), path = temp_zip_hydrolakes, overwrite = TRUE)
+# 
+# # Step 2: Unzip the file to a temporary directory
+# temp_dir_hydrolakes <- tempdir()
+# unzip(temp_zip_hydrolakes, exdir = temp_dir_hydrolakes)
+# 
+# # Step 3: Locate the .shp file within the unzipped files
+# shp_file <- list.files(temp_dir_hydrolakes, pattern = "\\.shp$", full.names = TRUE)
+# 
+# # Ensure only one .shp file is found; if not, stop with an error
+# if (length(shp_file) != 1) {
+#   stop("Error: Multiple or no .shp files found in the directory.")
+# }
 
 # Step 4: Load the shapefile
-lakes_data <- st_read(shp_file)
+# lakes_data <- st_read(shp_file)
 
 ##### File ID from Google Drive URL (For HydroRIVERS_v10_shp)
 #to be added
@@ -269,7 +271,6 @@ ggplot(cleaned_temp_data, aes(y = city_avg_temp)) +
 cor_matrix <- cor(cleaned_temp_data %>% select(country_avg_temp, city_avg_temp, country_temp_uncertainty, city_temp_uncertainty), use = "complete.obs")
 
 # Visualize the correlation matrix
-library(corrplot)
 corrplot(cor_matrix, method = "circle")
 
 # Average temperature by Country
@@ -327,65 +328,6 @@ ggplot(data = world_temp) +
 
 
 ####################################################################################   
-
-#TEST PLOT
-
-# Plot world map and world_cities
-ggplot() +
-  # Plot country boundaries
-  geom_sf(data = world_map, fill = "lightblue", color = "black") +
-  # Plot city locations
-  geom_point(data = world_cities, aes(x = X, y = Y), color = "red", size = 2) +
-  # Add labels for world_cities (assuming the city name column is 'name' or something similar)
-  geom_text(data = world_cities, aes(x = X, y = Y, label = NAME), 
-            hjust = 0, vjust = 1, size = 2, color = "darkred") +
-  # Set a minimal theme
-  theme_minimal() +
-  labs(title = "World Map with Cities",
-       x = "Longitude",
-       y = "Latitude")
-
-
-#Plotting average temp by country and city (1970 to 1980)
-
-# Convert 'dt' columns to Date format
-temp_country_data$dt <- as.Date(temp_country_data$dt)
-temp_cities_data$dt <- as.Date(temp_cities_data$dt)
-
-# Extract the year from the 'dt' column using lubridate
-temp_country_data$year <- year(temp_country_data$dt)
-temp_cities_data$year <- year(temp_cities_data$dt)
-
-# Filter the data for years between 1970 and 1980
-filtered_country_data <- temp_country_data %>%
-  filter(year >= 1970 & year <= 1980)
-
-filtered_city_data <- temp_cities_data %>%
-  filter(year >= 1970 & year <= 1980)
-
-# Aggregate the temperature by country (mean temperature for each country)
-country_avg_temp <- filtered_country_data %>%
-  group_by(Country) %>%
-  summarise(avg_temp = mean(country_avg_temp, na.rm = TRUE))
-
-# Aggregate the temperature by city (mean temperature for each city)
-city_avg_temp <- filtered_city_data %>%
-  group_by(City, Country, Latitude, Longitude) %>%
-  summarise(avg_temp = mean(city_avg_temp, na.rm = TRUE))
-
-# Plot the map with country temperatures
-ggplot() +
-  # Add the world map, filling by average country temperature
-  geom_sf(data = world_map, aes(fill = avg_temp), color = "black") +
-  scale_fill_viridis_c(option = "plasma", name = "Country Temp") +
-  # Add points for city temperatures
-  geom_point(data = city_avg_temp, aes(x = Longitude, y = Latitude, color = avg_temp), size = 2) +
-  scale_color_viridis_c(option = "magma", name = "City Temp") +
-  theme_minimal() +
-  labs(title = "World Map with Country and City Temperatures",
-       x = "Longitude",
-       y = "Latitude") +
-  coord_sf(lims_method = "geometry_bbox", default_crs = NULL)
 
 # 4. MODELLING ANALYSIS
 
