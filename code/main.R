@@ -452,113 +452,138 @@ ggplot(data = world_temp) +
 
 # 4. MODELLING ANALYSIS
 
-####################################################################
-# Average temp of specific year (2010)
-overall_avg_temp_2010 <- cleaned_temp_data %>%
-  filter(year == 2010) %>%
-  group_by(Country) %>%
-  summarise(avg_temp = mean(city_avg_temp, na.rm = TRUE))
-
-# Join with world shapefile data
-world_temp_2010 <- world_map %>%
-  inner_join(overall_avg_temp_2010, by = c("name" = "Country"))
-
-# Create a center point for the countries to display on map
-world_temp_centerpoint <- world_temp %>%
-  st_centroid() %>%
+# Transpose green area data
+green_area_data <- green_area_data %>%
+  pivot_longer(
+    cols = starts_with("Average share of green area in") |
+      starts_with("Green area per capita"),
+    names_to = "Year_Metric",
+    values_to = "Value"
+  ) %>%
   mutate(
-    x = st_coordinates(.)[, 1],
-    y = st_coordinates(.)[, 2]
-  )
+    Year = as.integer(str_extract(Year_Metric, "\\d{4}")), 
+    Metric = case_when(
+      str_detect(Year_Metric, "Average share of green area") ~ "Average_share_of_green_area",
+      str_detect(Year_Metric, "Green area per capita") ~ "Green_area_per_capita"
+    )
+  ) %>%
+  select(-Year_Metric) %>%
+  pivot_wider(names_from = "Metric", values_from = "Value")
 
-# Add 2010 PoP to the countries centerpoints with temperature data to find relationship
-world_temp_and_pop_2010 <- world_temp_centerpoint %>%
-  left_join(population_data %>% select('Country.Territory', 'X2010.Population'), by = c("name" = "Country.Territory"))
+# Convert cleaned_temp_data year column from char to num datatype
+cleaned_temp_data$year <- as.integer(cleaned_temp_data$year)
 
-
-# Plot the map
-ggplot() +
-  geom_sf(data = world_temp_2010, aes(fill = avg_temp), color = "gray70") +
-  geom_point(data = world_temp_and_pop_2010, aes(x = x, y = y, size = X2010.Population), color = "cyan", alpha = 0.8) +
-  scale_fill_viridis_c(option = "plasma", name = "Avg Temp (?C)", na.value = "lightgray") +
-  scale_size(range = c(0.5, 5), name = "Population") +
-  labs(title = "Average Temperature by Country with Population in 2010", x = "Longitude", y = "Latitude") +
-  theme_minimal() +
-  geom_hline(yintercept = 0, color = "red", linetype = "dashed") +  # Equator line
-  coord_sf(ylim = c(-60, 90))
-
-# Scatter plot to see if there is relationship between pop and temp, NO CORRELATION OBSERVED
-ggplot(data = world_temp_and_pop_2010, aes(x = X2010.Population, y = avg_temp)) +
-  geom_point(color = "cyan4", alpha = 0.6) +
-  labs(title = "Relationship Between Population and Average Temperature 2010",
-       x = "Population",
-       y = "Average Temperature") 
-
-#++++++++++++++++++++++++++++++++++++++++++++++++
-
-# Average temp of specific year 1970
-overall_avg_temp_1970 <- cleaned_temp_data %>%
-  filter(year == 1970) %>%
-  group_by(Country) %>%
+### Join Pop, energy, green area data to Temp data
+# 1. Filter out countries with year and average temp
+cleaned_temp_data_with_popenergygreen <- cleaned_temp_data %>%
+  group_by(Country, year) %>%
   summarise(avg_temp = mean(city_avg_temp, na.rm = TRUE))
 
-# Join with world shapefile data
-world_temp_1970 <- world_map %>%
-  inner_join(overall_avg_temp_1970, by = c("name" = "Country"))
+# 2. Left join the pop data
+cleaned_temp_data_with_popenergygreen <- cleaned_temp_data_with_popenergygreen %>%
+  left_join(population_data %>% select(`Country/Territory`, `Year`, `Density (per km²)`, `Population`), by = c("Country" = "Country/Territory", "year" = "Year"))
 
-# Add 1970 PoP to the countries centerpoints with temperature data to find relationship
-world_temp_and_pop_1970 <- world_temp_centerpoint %>%
-  left_join(population_data %>% select('Country.Territory', 'X1970.Population'), by = c("name" = "Country.Territory"))
+# 3. Find average energy consumption by country and year then left join to temp data
+energy_data_avg_byyear <- energy_data %>%
+  group_by(Country, Year) %>%
+  summarise(Average_Energy_Consumption = mean(Energy_consumption, na.rm = TRUE))
 
-# Plot the map
-ggplot() +
-  geom_sf(data = world_temp_1970, aes(fill = avg_temp), color = "gray70") +
-  geom_point(data = world_temp_and_pop_1970, aes(x = x, y = y, size = X1970.Population), color = "cyan", alpha = 0.8) +
-  scale_fill_viridis_c(option = "plasma", name = "Avg Temp (?C)", na.value = "lightgray") +
-  scale_size(range = c(0.5, 5), name = "Population") +
-  labs(title = "Average Temperature by Country with Population in 1970", x = "Longitude", y = "Latitude") +
-  theme_minimal() +
-  geom_hline(yintercept = 0, color = "red", linetype = "dashed") +  # Equator line
-  coord_sf(ylim = c(-60, 90))
+cleaned_temp_data_with_popenergygreen <- cleaned_temp_data_with_popenergygreen %>%
+  left_join(energy_data_avg_byyear, by =  c("Country" = "Country", "year" = "Year"))
 
-# Scatter plot to see if there is relationship between pop and temp, NO CORRELATION OBSERVED
-ggplot(data = world_temp_and_pop_1970, aes(x = X1970.Population, y = avg_temp)) +
-  geom_point(color = "cyan4", alpha = 0.6) +
-  labs(title = "Relationship Between Population and Average Temperature",
-       x = "Population",
-       y = "Average Temperature")
+# 4. Find average green area by country then left join the green area data
+green_area_data_avg_byyear <- green_area_data %>%
+  group_by(`Country or Territory Name`, `Year`) %>%
+  summarise(Average_share_of_green_area = mean(Average_share_of_green_area, na.rm = TRUE),
+            Green_area_per_capita = mean(Green_area_per_capita, na.rm = TRUE))
 
-##########################################################
-#Find green area by country
-country_green_area_2010 <- green_area_data %>%
-  mutate(`Average share of green area in city/ urban area 2010 (%)` = as.numeric(`Average share of green area in city/ urban area 2010 (%)`)) %>%
-  group_by(`Country or Territory Name`) %>%
-  summarise(avg_green_area = mean(`Average share of green area in city/ urban area 2010 (%)`, na.rm = TRUE))
+cleaned_temp_data_with_popenergygreen <- cleaned_temp_data_with_popenergygreen %>%
+  left_join(green_area_data_avg_byyear, by = c("Country" = "Country or Territory Name", "year" = "Year"))
 
-# Add 2010 green to the countries centerpoints with temperature data to find relationship
-world_temp_and_green_2010 <- world_temp_centerpoint %>%
-  left_join(country_green_area_2010 %>% select(`Country or Territory Name`, `avg_green_area`), by = c("name" = "Country or Territory Name"))
+# See the first few rows
+head(cleaned_temp_data_with_popenergygreen)
 
+# Remove NA rows and ungroup 
+cleaned_temp_data_with_popenergygreen <- cleaned_temp_data_with_popenergygreen %>%
+  na.omit() %>%
+  ungroup()
 
-# Plot the map
-ggplot() +
-  geom_sf(data = world_temp_2010, aes(fill = avg_temp), color = "gray70") +
-  geom_point(data = world_temp_and_green_2010, aes(x = x, y = y, size = avg_green_area), color = "green4", alpha = 0.8) +
-  scale_fill_viridis_c(option = "plasma", name = "Avg Temp (?C)", na.value = "lightgray") +
-  scale_size(range = c(0.5, 5), name = "Greens") +
-  labs(title = "Average Temperature by Country with Greens in 2010", x = "Longitude", y = "Latitude") +
-  theme_minimal() +
-  geom_hline(yintercept = 0, color = "red", linetype = "dashed") +  # Equator line
-  coord_sf(ylim = c(-60, 90))
+# Extract columns for correlation and calculate
+cor_with_temp <- cleaned_temp_data_with_popenergygreen %>%
+  select(avg_temp, Population, Average_Energy_Consumption, Average_share_of_green_area)
 
-# Scatter plot to see if there is relationship between green and temp, HAVE SOME RELATIONSHIP TRENDS BUT NOT STRONG
-ggplot(data = world_temp_and_green_2010, aes(x = avg_green_area, y = avg_temp)) +
-  geom_point(color = "cyan4", alpha = 0.6) +
-  labs(title = "Relationship Between Greens and Average Temperature 2010",
-       x = "Greens",
-       y = "Average Temperature") 
+cor_matrix_for_temp <- cor(cor_with_temp, use = "complete.obs")
+corrplot(cor_matrix_for_temp, method = "circle")
 
+# Regression model
+regression_model <- lm(avg_temp ~ Population + Average_Energy_Consumption + Average_share_of_green_area, 
+                       data = cleaned_temp_data_with_popenergygreen)
+summary(regression_model)
 
+# Set seed for prediction test
+set.seed(1234)
+
+# Randomly sample 3 rows from Cleaned_temp_data to test predict
+random_data_for_predict <- cleaned_temp_data_with_popenergygreen %>% sample_n(5)
+
+# Try predict with regression model
+regression_predictions <- predict(regression_model, newdata = random_data_for_predict)
+regression_predictions
+
+# Polynomial Regression
+poly_model <- lm(avg_temp ~ poly(Population, 2) + poly(Average_Energy_Consumption, 2) + poly(Average_share_of_green_area, 2), data = cleaned_temp_data_with_popenergygreen)
+summary(poly_model)
+
+# Try predict with polynomial model
+poly_predictions <- predict(poly_model, newdata = random_data_for_predict)
+poly_predictions
+
+# Join prediction into random data for view
+random_data_for_predict <- random_data_for_predict %>%
+  mutate(Linear_regression_predictions = regression_predictions, Polynomial_regression_predictions = poly_predictions) 
+
+view(random_data_for_predict)
+
+# Try Random Forest
+library(randomForest)
+
+# Split data for random forest 
+train_indices <- sample(1:nrow(cleaned_temp_data_with_popenergygreen), 0.8 * nrow(cleaned_temp_data_with_popenergygreen))
+train_data <- cleaned_temp_data_with_popenergygreen[train_indices, ]
+test_data <- cleaned_temp_data_with_popenergygreen[-train_indices, ]
+
+# Random Forest model
+rf_model <- randomForest(avg_temp ~ Population + Average_Energy_Consumption + Average_share_of_green_area, data = train_data)
+
+# Predict using random forest
+test_predictions <- predict(rf_model, newdata = test_data)
+rmse <- sqrt(mean((test_predictions - test_data$avg_temp)^2))
+print(rmse)
+rsq <- 1 - sum((test_predictions - test_data$avg_temp)^2) / sum((test_data$avg_temp - mean(test_data$avg_temp))^2)
+print(rsq)
+
+importance(rf_model)
+
+# Plot random forest the importance of each predictors
+importance_values <- importance(rf_model)
+importance_df <- data.frame(Feature = rownames(importance_values), Importance = importance_values[, 1])
+ggplot(importance_df, aes(x = reorder(Feature, Importance), y = Importance)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  coord_flip() +
+  geom_text(aes(label = round(importance_values, 2)), hjust = 1.2, color = "black", size = 3) +
+  labs(title = "Importance of predictors in RF Model",
+       x = "Predictors",
+       y = "Importance Value") 
+
+# Plot to see how many points' predictions are close to actual temp
+ggplot(data.frame(Predicted = test_predictions, Actual = test_data$avg_temp), aes(x = Actual, y = Predicted)) +
+  geom_point(color = "blue") +
+  geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed") +
+  labs(title = "Predicted vs. Actual Temperature",
+       x = "Actual Temperature",
+       y = "Predicted Temperature")
+
+####################################################################################
 
 # 5. SPATIAL ANALYTICS
 
