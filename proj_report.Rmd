@@ -8,7 +8,7 @@ author:
 date: "2024-11-17"
 output:
   word_document:
-    reference_docx: TBA2014_custom_template.docx
+    reference_docx: TBA4220_custom_template.docx
 ---
 
 ```{r setup, include=FALSE}
@@ -17,12 +17,23 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 # INTRODUCTION
+For this report, the **Problem Statement is: Which factors (population density, energy consumption, and green area size) most significantly impact the intensity of urban temperature?** With urban areas worldwide experiencing rising temperatures due to industrialization and rapid urbanization, it is crucial to understand and mitigate the factors driving urban heat. Therefore, this project seeks to analyze and predict urban heat island (UHI) intensity by examining how population density, energy consumption, and green space availability contribute to temperature variations across diverse geographic regions.
+
+Using datasets downloaded from Kaggle on temperature, population, energy consumption, and land use, we will explore the correlation between population density and urban temperatures, assess the influence of various environmental and socio-economic variables on UHI, and examine how energy consumption exacerbates UHI effects. By integrating these datasets and conducting exploratory data analysis (EDA), we aim to build predictive models that accurately estimate UHI intensity, enabling policymakers and urban planners to prioritize effective strategies to mitigate UHI impacts.
+
+Ultimately, the findings from this project will provide public policymakers and urban planners with insights into how urban environmental factors—such as population density, green area size, and energy consumption—affect temperature variations in cities. These insights can guide the development of strategies for urban heat mitigation, support the creation of climate-adaptive policies, and inform sustainable urban planning practices focused on managing and reducing urban heat intensity.
+
 
 # BACKGROUND
+Urban areas worldwide are experiencing rising temperatures, often due to industrialization and rapid urbanization. For this reason, many urban areas are significantly warmer than their surrounding rural areas. According to a study conducted by the **Queensland University of Technology,** *titled - [Urban heat island effect: A systematic review of spatio-temporal factors, data, methods, and mitigation measures]((https://eprints.qut.edu.au/115400/1/Manuscript%20Accepted%20Version.pdf))*, several factors contribute to UHI, including population density, energy consumption, and the lack of green spaces. This study systematically reviews and highlights how spatial and temporal factors influence temperature intensity and emphasizing the importance to analyze these variables effectively to formulate policies that mitigate the raise in temperature.
+
+## JUSTIFICATION
+Building on this knowledge, we aim to advance the research further by exploring how the above three factors intensify UHI effect over time through predictive analysis and by assessing the potential consequences if left unaddressed. Therefore, our report’s hypothesis posits that high-density urban areas, combined with extensive built infrastructure (energy consumption) and concentrated human activity (population density), contribute to elevated temperatures through reduced green space areas and increased heat emissions. Without immediate control, this intensification of the UHI effect could accelerate local temperature and lead to more frequent and severe heatwave events in urban areas, posing significant risks to the quality of life.
+
 
 # DATA
-
 ## STEP 01 - DATA COLLECTION
+The data used in this project comes from two primary sources: R's Natural Earth data package and Kaggle.
 
 ```{r echo=FALSE, warning = FALSE, message = FALSE, include=FALSE}
 # Import of libraries
@@ -40,8 +51,19 @@ library(rnaturalearthdata)
 library(lubridate)
 library(plotly)
 library(viridis)
+library(scales)
 library(readr)
 library(rlang)
+library(corrplot)
+library(spatstat)
+library(eks)
+library(ks)
+library(tmap)
+library(spdep)
+library(spatialreg)
+library(GWmodel)
+library(patchwork)
+library(knitr)
 
 # Downloading the dataset from Google drive using the following function
 download_file_fun <- function(file_id) {
@@ -66,49 +88,233 @@ temp_green <-  tempfile(fileext = ".xlsx")
 drive_download(as_id(file_id_temp_green), path = temp_green, overwrite = TRUE)
 green_area_data <- read_excel(temp_green)
 
-# Load world and class data from packages
+# Load world and class data from Natural Earth packages to retrieve spatial polygon scales
 world_map <- ne_countries(scale = "medium", returnclass = "sf")
 world_cities <- ne_download(scale = "medium", type = "populated_places", category = "cultural", returnclass = "sf")
 cities_coords <- st_coordinates(world_cities)
 world_cities <- cbind(world_cities, cities_coords)
-```
 
------ Explanation ------
-
-## STEP 02 - DATA CLEANING AND TRANSFORMATION
-
-### DATA CLEANING
-```{r echo=FALSE, warning = FALSE, message = FALSE, include=FALSE}
-# Rename columns for clarity
-temp_country_data <- temp_country_data %>%
-  rename(
-    country_avg_temp = AverageTemperature,
-    country_temp_uncertainty = AverageTemperatureUncertainty
-  )
-temp_cities_data <- temp_cities_data %>%
-  rename(
-    city_avg_temp = AverageTemperature,
-    city_temp_uncertainty = AverageTemperatureUncertainty
-  )
 # Combine country and city data
 joined_country_city_temp <- left_join(temp_country_data, temp_cities_data, by = c("dt", "Country"))
-# Transpose population data
+```
+
+During the data sourcing process, we encountered challenges finding comprehensive spatial polygon dataframes that aligned with our project requirements. Many available datasets we came across on Kaggle and NASA's earth data either lacked polygon scales or, included them but did not contain the spatial attributes needed to address our problem statement. As a result, using R libraries, we downloaded world and city data from the Natural Earth data package and integrated the spatial data libraries with datasets from Kaggle to form the spatial polygon dataframes for our analysis.
+
+On the Kaggle platform, we downloaded five datasets. Specifically:
+
+### **[The country's temperature dataset]((https://www.kaggle.com/datasets/parulpandey/world-coordinates))**: Dataset containing land temperatures of ever country
++---------------------------+-------------------------------------------------+
+| Datasets                  | Fields (data type)                              |
++===========================+=================================================+
+|                           | - dt (Character)                                |
+| Global Land Temperatures  | - country_avg_temp (Numeric)                    |
+| by Country                | - country_avg_uncertainty (Numeric)             |
+|                           | - country (Character)                           |     
++---------------------------+-------------------------------------------------+
+
+### **[The city's temperature dataset]((https://www.kaggle.com/datasets/berkeleyearth/climate-change-earth-surface-temperature-data?select=GlobalLandTemperaturesByState.csv))**: Dataset containing land temperatures of ever state (city)
++---------------------------+-------------------------------------------------+
+| Datasets                  | Fields (data type)                              |
++===========================+=================================================+
+|                           | - dt (Character)                                |
+|                           | - city_avg_temp (Numeric)                       |
+| Global Land Temperatures  | - city_avg_uncertainty (Numeric)                |
+| by State                  | - city (Character)                              |     
+|                           | - country (Character)                           |   
+|                           | - latitude (Character)                          |   
+|                           | - longitude (Character)                         |   
++---------------------------+-------------------------------------------------+
+
+### **[The population dataset]((https://www.kaggle.com/datasets/iamsouravbanerjee/world-population-dataset))**: World Population Dataset by Country/Territory
++---------------------------+-------------------------------------------------+
+| Datasets                  | Fields (data type)                              |
++===========================+=================================================+
+|                           | - Rank (Numeric)                                |
+|                           | - CCA3 (Character)                              |
+|                           | - Country/Territory (Character)                 |
+|                           | - Capital (Character)                           |     
+|                           | - Continent (Character)                         |   
+|                           | - Area (Numeric)                                |   
+| World Population Dataset  | - Density (Numeric)                             |   
+|                           | - Growth Rate (Numeric)                         |   
+|                           | - World Population Percentage (Numeric)         |   
+|                           | - 2022 Population (Numeric)                     |   
+|                           | - 2020 Population (Numeric)                     |   
+|                           | - 2015 Population (Numeric)                     |   
+|                           | - 2010 Population (Numeric)                     |   
+|                           | - 2000 Population (Numeric)                     |  
++---------------------------+-------------------------------------------------+
+
+### **[The energy dataset]((https://www.kaggle.com/datasets/lobosi/c02-emission-by-countrys-grouth-and-population))**: Yearly CO2 Emission by each Countrys Energy Consumption/Production, Gross Domestic Product, Population, etc
++---------------------------+-------------------------------------------------+
+| Datasets                  | Fields (data type)                              |
++===========================+=================================================+
+|                           | - Country (Character)                           |
+|                           | - Energy_type (Character)                       |
+|                           | - Year (Numeric)                                |
+|                           | - Energy_consumption (Numeric)                  |     
+| Countries CO2 Emission    | - Energy_production (Numeric)                   |   
+| Dataset                   | - GDP (Numeric)                                 |   
+|                           | - Population (Numeric)                          |  
+|                           | - Energy_intensity_per_capita (Numeric)         |   
+|                           | - Energy_intensity_per_GDP (Numeric)            |   
+|                           | - CO2_emission (Numeric)                        |   
++---------------------------+-------------------------------------------------+
+
+### **[The green area dataset]((https://data.unhabitat.org/pages/open-spaces-and-green-areas))**: Open spaces and green areas
++---------------------------+----------------------------------------------------------------------+
+| Datasets                  | Fields (data type)                                                   |
++===========================+======================================================================+
+|                           | - Country or Territorial Name (Character)                            |
+|                           | - City Code (Numeric)                                                |
+|                           | - City Name (Numeric)                                                |
+|                           | - SDG Sub-Region (Character)                                         |     
+|                           | - SDG Region (Character)                                             |   
+|                           | - Average share of green area in city/urban area 1990 (%) (Numeric)  |   
+| Green Area Dataset        | - Average share of green area in city/urban area 2000 (%) (Numeric)  |   
+|                           | - Average share of green area in city/urban area 2010 (%) (Numeric)  |   
+|                           | - Average share of green area in city/urban area 2020 (%) (Numeric)  |   
+|                           | - Green area per capita 1990 (m2/person) (Numeric)                   |   
+|                           | - Green area per capita 2000 (m2/person) (Numeric)                   |   
+|                           | - Green area per capita 2010 (m2/person) (Numeric)                   |   
+|                           | - Green area per capita 2020 (m2/person) (Numeric)                   |   
+|                           | - Data Source (Character)                                            |   
+|                           | - FootNote (m2/person) (Character)                                   |   
++---------------------------+----------------------------------------------------------------------+
+
+Our analysis examines how population density, energy consumption, and green area size influence temperatures in urban areas, making it essential to investigate temperature variations at a granular level. This will ultimately form the foundation of our analysis work. Furthermore, cities within the same country often experience significant temperature differences due to factors like local conditions or more broadly, proximity to the equator. For this reason, we prioritized city temperatures over country-level averages to capture these critical nuances more accurately.
+
+As we obtained the country and city temperature datasets separately, we combined them using a left join on the city's dataset with the country's dataset. Given that we are focusing our analysis on city-level, this merging technique will retain city-specific details and create a country-city spatial dataframe that is comprehensive for us to start on our analysis. 
+
+### LIMITATION
+We recognise the following data limitations in our analysis: 
+* **Urban vs. Rural Classification:** The datasets do not explicitly define urban and rural areas. For simplicity, we will assume cities represent urban areas and non-city regions as rural. 
+* **Data Precision::** City-specific data for population density and environmental factors are unavailable, as such we will assume uniform distribution across countries. 
+
+## STEP 02 - DATA CLEANING AND TRANSFORMATION
+### DATA CLEANING
+Throughout the data cleaning process, we perform and executed the following: 
+
+* Removal of NA values
+* Check and remove duplicated records
+* Renaming of column names
+* Removing unnecessary columns that doesnt value add the analysis
+* Data type conversion of columns
+* Data transposition: Our population and energy datasets were initially downloaded in wide format, which is not suitable for time-series analysis. To address this, we transposed both datasets into long format, organizing the data so that each row represents a single observation for a specific country, year, and variable
+* Longitude and Latitude format checks: To ensure the downloaded longitude and latitude data are within valid ranges and formats, we implemented a regex checker as part of our data validation process. This checker verifies that longitudes are between -180 and 180 degrees and latitudes are between -90 and 90 degrees, thereafter, removing any records that do not meet these criteria. Additionally, we converted the longitude and latitude values from cardinal points to numerical values to facilitate easy plotting of our maps
+* Feature engineer columns: Our temperature dataset encompasses a significant temporal range, spanning from 1890 to 2013—approximately two centuries of data. Visualizing such an extensive time series in a single facet graph is challenging due to the vast number of data points and the potential for overcrowding, which can obscure meaningful patterns and trends. To effectively analyze and present this data, we created two new columns—'Year' and 'Decade'—to group the temperature records into ten-year intervals. This grouping ensures that all data points are accounted for and can be visually represented on the map.
+* Inconsistent data dates in City Temperature dataset: To ensure consistent time series data across cities and minimize skewness in temperature comparisons, we plotted a map of a 100,000-record sample, which showcased the skewness in data by revealing that cities had varying numbers of unique dates (some with ~1,500 dates, others with ~3,000). To address this, we standardized the dataset by identifying overlapping dates among all cities and removing non-overlapping dates, ensuring that each city had the same number of unique dates (1,450). This resulted in a uniform dataset suitable for accurate analysis and visualization.
+
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+# Count initial rows per dataset
+print("Initial Count")
+print(paste("Total number of records for City Temperature Dataset: ", nrow(joined_country_city_temp)))
+print(paste("Total number of records for Population Dataset: ", nrow(population_data)))
+print(paste("Total number of records for Energy Dataset: ", nrow(energy_data)))
+print(paste("Total number of records for Green Area Dataset:  ", nrow(green_area_data)))
+
+# Checking and removing "NA" values if there are any
+print("[Old] Number of NA per column for City Temperature Dataset: ")
+colSums(is.na(joined_country_city_temp))
+print("[Old] Number of NA per column for Population Dataset: ")
+colSums(is.na(population_data))
+print("[Old] Number of NA per column for Energy Dataset: ")
+colSums(is.na(energy_data))
+print("[Old] Number of NA per column for Green Area Dataset: ")
+colSums(is.na(green_area_data))
+
+cleaned_temp_data <- joined_country_city_temp %>% drop_na()
+energy_data <- energy_data %>% drop_na()
+green_area_data <- green_area_data %>% drop_na()
+
+print("[New after cleaning] Number of NA per column for City Temperature Dataset: ")
+colSums(is.na(cleaned_temp_data))
+print("[New after cleaning] Number of NA per column for Population Dataset: ")
+colSums(is.na(population_data))
+print("[New after cleaning] Number of NA per column for Energy Dataset: ")
+colSums(is.na(energy_data))
+print("[New after cleaning] Number of NA per column for Green Area Dataset: ")
+colSums(is.na(green_area_data))
+
+# Checking and removing duplicated values if there are any
+print(paste("Total number of duplicated records in City Temperature Dataset: ", nrow(cleaned_temp_data[duplicated(cleaned_temp_data), ])))
+print(paste("Total number of duplicated records in Population Dataset: ", nrow(population_data[duplicated(population_data), ])))
+print(paste("Total number of duplicated records in Energy Dataset: ", nrow(energy_data[duplicated(energy_data), ])))
+print(paste("Total number of duplicated records in Green Area Dataset: ", nrow(green_area_data[duplicated(green_area_data), ])))
+
+# Rename columns for clarity 
+print("City Temperature Dataset column names: ")
+colnames(cleaned_temp_data)
+print("Population Dataset column names: ")
+colnames(population_data)
+print("Energy Dataset column names: ")
+colnames(energy_data)
+print("Green Area Dataset column names: ")
+colnames(green_area_data)
+
+cleaned_temp_data <- cleaned_temp_data %>% rename(
+    country_avg_temp = AverageTemperature.x,
+    country_temp_uncertainty = AverageTemperatureUncertainty.x, 
+    city_avg_temp = AverageTemperature.y,
+    city_temp_uncertainty = AverageTemperatureUncertainty.y
+  )
+
+# Remove unnecessary column ("...1") in energy dataset
+green_area_data <- green_area_data[, -1]
+
+print("After renaming and removing of columns")
+print("--------------------------------------------")
+print("City Temperature Dataset column names: ")
+colnames(cleaned_temp_data)
+print("Green Area Dataset column names: ")
+colnames(green_area_data)
+
+# Check column classes and convert if required
+display_column_classes <- function(dataset, dataset_name) {
+  column_classes <- sapply(dataset, class)
+  column_info <- data.frame(
+    Column = names(column_classes),
+    Class = as.character(column_classes),
+    stringsAsFactors = FALSE
+  )
+  kable(
+    column_info,
+    caption = paste(dataset_name, "Column Data Types")
+  )
+}
+display_column_classes(cleaned_temp_data, "City Temperature Dataset")
+display_column_classes(population_data, "Population Dataset")
+display_column_classes(energy_data, "Energy Dataset")
+display_column_classes(green_area_data, "Green Area Dataset")
+
+# Transpose population and energy data
 population_data <- population_data %>% pivot_longer(
     cols = ends_with("Population"),          
     names_to = "Year",                       
     names_prefix = "",                       
     values_to = "Population"                
   ) %>% mutate( Year = as.integer(sub(" Population", "", Year)))
-# Remove rows with NA values
-cleaned_temp_data <- joined_country_city_temp %>% drop_na()
-# Checking that lat is within -90 and 90 and log is within -18- and 180
+green_area_data <- green_area_data %>%
+  pivot_longer(
+    cols = starts_with("Average share of green area in") |
+      starts_with("Green area per capita"),
+    names_to = "Year_Metric",
+    values_to = "Value"
+  ) %>%
+  mutate(
+    Year = as.integer(str_extract(Year_Metric, "\\d{4}")), 
+    Metric = case_when(
+      str_detect(Year_Metric, "Average share of green area") ~ "Average_share_of_green_area",
+      str_detect(Year_Metric, "Green area per capita") ~ "Green_area_per_capita"
+    )
+  ) %>%
+  select(-Year_Metric) %>%
+  pivot_wider(names_from = "Metric", values_from = "Value")
+
+# Checking that lat is within -90 and 90 and log is within -180 and 180
 lat_pat <- "^(-?([0-9]{1,2}(\\.\\d+)?))([NS])?$"
 lon_pat <- "^(-?([0-9]{1,3}(\\.\\d+)?))([EW])?$"
 cleaned_temp_data <- cleaned_temp_data %>% filter(grepl(lat_pat, Latitude), grepl(lon_pat, Longitude))
-# Checking and removing duplicated values if there are any
-print(paste("Total number of duplicated records: ", nrow(cleaned_temp_data[duplicated(cleaned_temp_data), ])))
-# Convert 'dt' to Date
-cleaned_temp_data$dt <- as.Date(cleaned_temp_data$dt)
 # Function to clean Latitude
 clean_latitude <- function(lat) {
   lat <- trimws(lat)                      # Remove leading/trailing whitespace
@@ -137,6 +343,11 @@ clean_longitude <- function(lon) {
 # Apply the cleaning functions
 cleaned_temp_data$Latitude <- sapply(cleaned_temp_data$Latitude, clean_latitude)
 cleaned_temp_data$Longitude <- sapply(cleaned_temp_data$Longitude, clean_longitude)
+
+# Feature engineering a new column for data transformation
+cleaned_temp_data$year <- format(cleaned_temp_data$dt, "%Y")
+cleaned_temp_data$year <- as.numeric(cleaned_temp_data$year)
+
 # Plotting bar chart to visually check if the cities have differing dates (randomly sampling 100000 records as there are too much data points to plot)
 unique_dt_map_fun <- function(data){
   set.seed(1234)
@@ -164,19 +375,79 @@ cleaned_temp_data <- cleaned_temp_data %>% filter(dt %in% overlapping_dt)
 unique_dt_map_fun(cleaned_temp_data)
 ```
 
------ Explanation ------
+After cleaning and removing irrelevant data, we are left with the following usable records for each dataset. The count is seen below:
+
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+print("Final Count")
+print(paste("Total number of records for City Temperature Dataset: ", nrow(joined_country_city_temp)))
+print(paste("Total number of records for Population Dataset: ", nrow(population_data)))
+print(paste("Total number of records for Energy Dataset: ", nrow(energy_data)))
+print(paste("Total number of records for Green Area Dataset:  ", nrow(green_area_data)))
+```
+
 
 ## DATA TRANSFORMATION
+Once the data had been cleaned, we moved on to the transformation phase. To better understand the data, we plotted maps to determine the spatial distribution of temperature records, identify geographical patterns and anomalies, and assess how temperature trends varied across different regions and decades
 
------ Explanation ------
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+# Grouping and categorizing each year's decade
+cleaned_temp_data$decade <- floor(cleaned_temp_data$year / 10) * 10
+avg_temp_across_decade <- cleaned_temp_data %>% group_by(decade, City, Longitude, Latitude) %>% reframe(avg_temp = mean(city_avg_temp, na.rm = TRUE))
 
-# EXPLORATORY DATA ANALYSIS
+ggplot(avg_temp_across_decade) +
+  borders("world", colour = "gray80", fill = "gray90") +
+  geom_point(aes(x = Longitude, y = Latitude, color = avg_temp), size = 1, alpha = 0.7) +
+  scale_color_viridis_c(name = "Avg Temp (ï¿½C)", limits = c(10, 25), oob = squish) + 
+  labs(
+    title = "Average Temperature by City Across Decades",
+    x = "Longitude",
+    y = "Latitude"
+  ) +
+  facet_wrap(~ decade, ncol = 5) +
+  theme_minimal() +
+  theme(
+    strip.text = element_text(size = 8),
+    plot.title = element_text(hjust = 0.5),
+    legend.position = "right"
+  )
+```
 
------ Explanation ------
+**Analysis/Observation:** Based on the above maps, the facet analysis of average temperatures across cities by decade clearly reveals a gradual warming trend over the past two centuries, thereby supporting the hypothesis that urban temperatures have increased over time. Specifically, when comparing maps from 1890 and 2010, we observe that cities near the equator, initially shaded in green, have shifted to warmer tones (yellow or light green) by 2010, indicating a discernible rise in temperature. To ensure our analysis remains relevant to the present, we applied an exponentially weighted average transformation, placing greater emphasis on data from the 20th century onward.
 
-# METHODS AND MODELINGS
+```{r echo=FALSE, warning = FALSE, message = FALSE, include=FALSE}
+unique_years <- unique(cleaned_temp_data$year)
+unique_years <- sort(unique_years, decreasing = TRUE)
+weighted_avg_func <- function(avg_temperatures, year){
+  index <- match(year, unique_years)
+  w <- 1/(2^index)
+  weighted_temp <- (avg_temperatures * w)
+  return(weighted_temp)
+}
+cleaned_temp_data$weighted_city_avg_temp <- mapply(weighted_avg_func, avg_temperatures = cleaned_temp_data$city_avg_temp, year = cleaned_temp_data$year)
+```
 
------ Explanation ------
+# STEP 02 - EXPLORATORY DATA ANALYSIS
+
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+
+```
+
+**Analysis/Observation:** 
+
+# STEP 03 - METHODS AND MODELINGS
+
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+
+```
+
+**Analysis/Observation:** 
+
+
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+
+```
+
+**Analysis/Observation:** 
 
 # ANALYSIS
 
