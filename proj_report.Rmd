@@ -188,6 +188,7 @@ As we obtained the country and city temperature datasets separately, we combined
 
 ### LIMITATION
 We recognise the following data limitations in our analysis: 
+
 * **Urban vs. Rural Classification:** The datasets do not explicitly define urban and rural areas. For simplicity, we will assume cities represent urban areas and non-city regions as rural. 
 * **Data Precision::** City-specific data for population density and environmental factors are unavailable, as such we will assume uniform distribution across countries. 
 
@@ -200,12 +201,12 @@ Throughout the data cleaning process, we perform and executed the following:
 * Renaming of column names
 * Removing unnecessary columns that doesnt value add the analysis
 * Data type conversion of columns
-* Data transposition: Our population and energy datasets were initially downloaded in wide format, which is not suitable for time-series analysis. To address this, we transposed both datasets into long format, organizing the data so that each row represents a single observation for a specific country, year, and variable
-* Longitude and Latitude format checks: To ensure the downloaded longitude and latitude data are within valid ranges and formats, we implemented a regex checker as part of our data validation process. This checker verifies that longitudes are between -180 and 180 degrees and latitudes are between -90 and 90 degrees, thereafter, removing any records that do not meet these criteria. Additionally, we converted the longitude and latitude values from cardinal points to numerical values to facilitate easy plotting of our maps
-* Feature engineer columns: Our temperature dataset encompasses a significant temporal range, spanning from 1890 to 2013—approximately two centuries of data. Visualizing such an extensive time series in a single facet graph is challenging due to the vast number of data points and the potential for overcrowding, which can obscure meaningful patterns and trends. To effectively analyze and present this data, we created two new columns—'Year' and 'Decade'—to group the temperature records into ten-year intervals. This grouping ensures that all data points are accounted for and can be visually represented on the map.
-* Inconsistent data dates in City Temperature dataset: To ensure consistent time series data across cities and minimize skewness in temperature comparisons, we plotted a map of a 100,000-record sample, which showcased the skewness in data by revealing that cities had varying numbers of unique dates (some with ~1,500 dates, others with ~3,000). To address this, we standardized the dataset by identifying overlapping dates among all cities and removing non-overlapping dates, ensuring that each city had the same number of unique dates (1,450). This resulted in a uniform dataset suitable for accurate analysis and visualization.
+* **Data transposition:** Our population and energy datasets were initially downloaded in wide format, which is not suitable for time-series analysis. To address this, we transposed both datasets into long format, organizing the data so that each row represents a single observation for a specific country, year, and variable
+* **Longitude and Latitude format checks:** To ensure the downloaded longitude and latitude data are within valid ranges and formats, we implemented a regex checker as part of our data validation process. This checker verifies that longitudes are between -180 and 180 degrees and latitudes are between -90 and 90 degrees, thereafter, removing any records that do not meet these criteria. Additionally, we converted the longitude and latitude values from cardinal points to numerical values to facilitate easy plotting of our maps
+* **Feature engineer columns:** Our temperature dataset encompasses a significant temporal range, spanning from 1890 to 2013—approximately two centuries of data. Visualizing such an extensive time series in a single facet graph is challenging due to the vast number of data points and the potential for overcrowding, which can obscure meaningful patterns and trends. To effectively analyze and present this data, we created two new columns—'Year' and 'Decade'—to group the temperature records into ten-year intervals. This grouping ensures that all data points are accounted for and can be visually represented on the map.
+* **Inconsistent data dates in City Temperature dataset:** To ensure consistent time series data across cities and minimize skewness in temperature comparisons, we plotted a map of a 100,000-record sample, which showcased the skewness in data by revealing that cities had varying numbers of unique dates (some with ~1,500 dates, others with ~3,000). To address this, we standardized the dataset by identifying overlapping dates among all cities and removing non-overlapping dates, ensuring that each city had the same number of unique dates (1,450). This resulted in a uniform dataset suitable for accurate analysis and visualization.
 
-```{r echo=FALSE, warning = FALSE, message = FALSE}
+```{r echo=FALSE, warning = FALSE, message = FALSE, fig.width=8, fig.height=6, fig.align="center", out.width="100%"}
 # Count initial rows per dataset
 print("Initial Count")
 print(paste("Total number of records for City Temperature Dataset: ", nrow(joined_country_city_temp)))
@@ -214,27 +215,19 @@ print(paste("Total number of records for Energy Dataset: ", nrow(energy_data)))
 print(paste("Total number of records for Green Area Dataset:  ", nrow(green_area_data)))
 
 # Checking and removing "NA" values if there are any
-print("[Old] Number of NA per column for City Temperature Dataset: ")
-colSums(is.na(joined_country_city_temp))
-print("[Old] Number of NA per column for Population Dataset: ")
-colSums(is.na(population_data))
-print("[Old] Number of NA per column for Energy Dataset: ")
-colSums(is.na(energy_data))
-print("[Old] Number of NA per column for Green Area Dataset: ")
-colSums(is.na(green_area_data))
+print(paste("NA present for City Temperature Dataset: ", any(is.na(joined_country_city_temp))))
+print(paste("NA present for Population Dataset: ", any(is.na(population_data))))
+print(paste("NA present for Energy Dataset: ", any(is.na(energy_data))))
+print(paste("NA present for Green Area Dataset: ", any(is.na(green_area_data))))
 
 cleaned_temp_data <- joined_country_city_temp %>% drop_na()
 energy_data <- energy_data %>% drop_na()
 green_area_data <- green_area_data %>% drop_na()
-
-print("[New after cleaning] Number of NA per column for City Temperature Dataset: ")
-colSums(is.na(cleaned_temp_data))
-print("[New after cleaning] Number of NA per column for Population Dataset: ")
-colSums(is.na(population_data))
-print("[New after cleaning] Number of NA per column for Energy Dataset: ")
-colSums(is.na(energy_data))
-print("[New after cleaning] Number of NA per column for Green Area Dataset: ")
-colSums(is.na(green_area_data))
+print("Rechecking for NA")
+print(paste("NA present for City Temperature Dataset: ", any(is.na(cleaned_temp_data))))
+print(paste("NA present for Population Dataset: ", any(is.na(population_data))))
+print(paste("NA present for Energy Dataset: ", any(is.na(energy_data))))
+print(paste("NA present for Green Area Dataset: ", any(is.na(green_area_data))))
 
 # Checking and removing duplicated values if there are any
 print(paste("Total number of duplicated records in City Temperature Dataset: ", nrow(cleaned_temp_data[duplicated(cleaned_temp_data), ])))
@@ -243,15 +236,6 @@ print(paste("Total number of duplicated records in Energy Dataset: ", nrow(energ
 print(paste("Total number of duplicated records in Green Area Dataset: ", nrow(green_area_data[duplicated(green_area_data), ])))
 
 # Rename columns for clarity 
-print("City Temperature Dataset column names: ")
-colnames(cleaned_temp_data)
-print("Population Dataset column names: ")
-colnames(population_data)
-print("Energy Dataset column names: ")
-colnames(energy_data)
-print("Green Area Dataset column names: ")
-colnames(green_area_data)
-
 cleaned_temp_data <- cleaned_temp_data %>% rename(
     country_avg_temp = AverageTemperature.x,
     country_temp_uncertainty = AverageTemperatureUncertainty.x, 
@@ -261,13 +245,6 @@ cleaned_temp_data <- cleaned_temp_data %>% rename(
 
 # Remove unnecessary column ("...1") in energy dataset
 green_area_data <- green_area_data[, -1]
-
-print("After renaming and removing of columns")
-print("--------------------------------------------")
-print("City Temperature Dataset column names: ")
-colnames(cleaned_temp_data)
-print("Green Area Dataset column names: ")
-colnames(green_area_data)
 
 # Check column classes and convert if required
 display_column_classes <- function(dataset, dataset_name) {
@@ -389,7 +366,7 @@ print(paste("Total number of records for Green Area Dataset:  ", nrow(green_area
 ## DATA TRANSFORMATION
 Once the data had been cleaned, we moved on to the transformation phase. To better understand the data, we plotted maps to determine the spatial distribution of temperature records, identify geographical patterns and anomalies, and assess how temperature trends varied across different regions and decades
 
-```{r echo=FALSE, warning = FALSE, message = FALSE}
+```{r echo=FALSE, warning = FALSE, message = FALSE, fig.width=8, fig.height=6, fig.align="center", out.width="80%"}
 # Grouping and categorizing each year's decade
 cleaned_temp_data$decade <- floor(cleaned_temp_data$year / 10) * 10
 avg_temp_across_decade <- cleaned_temp_data %>% group_by(decade, City, Longitude, Latitude) %>% reframe(avg_temp = mean(city_avg_temp, na.rm = TRUE))
