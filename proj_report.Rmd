@@ -1,5 +1,5 @@
 ---
-title: "Urban Heat Island Effect Project Report"
+title: "City Urban Heat Island Effect Project Report"
 author:
 - CHIA YUE ZHU AMELINE, A0211277L
 - GOH WEI JIE DARREN , A0265959E 
@@ -17,7 +17,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 # INTRODUCTION
-For this report, the **Problem Statement is: Which factors (population density, energy consumption, and green area size) most significantly impact the intensity of urban temperature?** With urban areas worldwide experiencing rising temperatures due to industrialization and rapid urbanization, it is crucial to understand and mitigate the factors driving urban heat. Therefore, this project seeks to analyze and predict urban heat island (UHI) intensity by examining how population density, energy consumption, and green space availability contribute to temperature variations across diverse geographic regions.
+For this report, the **Problem Statement is: Which factors (population density, energy consumption, and green area size) most significantly impact the intensity of urban temperature with city?** With urban cities worldwide experiencing rising temperatures due to industrialization and rapid urbanization, it is crucial to understand and mitigate the factors driving urban heat. Therefore, this project seeks to analyze and predict urban heat island (UHI) intensity by examining how population density, energy consumption, and green space availability contribute to temperature variations across diverse geographic regions.
 
 Using datasets downloaded from Kaggle on temperature, population, energy consumption, and land use, we will explore the correlation between population density and urban temperatures, assess the influence of various environmental and socio-economic variables on UHI, and examine how energy consumption exacerbates UHI effects. By integrating these datasets and conducting exploratory data analysis (EDA), we aim to build predictive models that accurately estimate UHI intensity, enabling policymakers and urban planners to prioritize effective strategies to mitigate UHI impacts.
 
@@ -28,7 +28,7 @@ Ultimately, the findings from this project will provide public policymakers and 
 Urban areas worldwide are experiencing rising temperatures, often due to industrialization and rapid urbanization. For this reason, many urban areas are significantly warmer than their surrounding rural areas. According to a study conducted by the **Queensland University of Technology,** *titled - [Urban heat island effect: A systematic review of spatio-temporal factors, data, methods, and mitigation measures]((https://eprints.qut.edu.au/115400/1/Manuscript%20Accepted%20Version.pdf))*, several factors contribute to UHI, including population density, energy consumption, and the lack of green spaces. This study systematically reviews and highlights how spatial and temporal factors influence temperature intensity and emphasizing the importance to analyze these variables effectively to formulate policies that mitigate the raise in temperature.
 
 ## JUSTIFICATION
-Building on this knowledge, we aim to advance the research further by exploring how the above three factors intensify UHI effect over time through predictive analysis and by assessing the potential consequences if left unaddressed. Therefore, our report’s hypothesis posits that high-density urban areas, combined with extensive built infrastructure (energy consumption) and concentrated human activity (population density), contribute to elevated temperatures through reduced green space areas and increased heat emissions. Without immediate control, this intensification of the UHI effect could accelerate local temperature and lead to more frequent and severe heatwave events in urban areas, posing significant risks to the quality of life.
+Building on this knowledge, we aim to advance the research further by exploring how the above three factors intensify UHI effect over time through predictive analysis and by assessing the potential consequences if left unaddressed. Therefore, our report’s hypothesis posits that high-density urban city areas, combined with extensive built infrastructure (energy consumption) and concentrated human activity (population density), contribute to elevated temperatures through reduced green space areas and increased heat emissions. Without immediate control, this intensification of the UHI effect could accelerate local temperature and lead to more frequent and severe heatwave events in urban areas, posing significant risks to the quality of life.
 
 
 # DATA
@@ -182,9 +182,9 @@ On the Kaggle platform, we downloaded five datasets. Specifically:
 |                           | - FootNote (m2/person) (Character)                                   |   
 +---------------------------+----------------------------------------------------------------------+
 
-Our analysis examines how population density, energy consumption, and green area size influence temperatures in urban areas, making it essential to investigate temperature variations at a granular level. This will ultimately form the foundation of our analysis work. Furthermore, cities within the same country often experience significant temperature differences due to factors like local conditions or more broadly, proximity to the equator. For this reason, we prioritized city temperatures over country-level averages to capture these critical nuances more accurately.
+Our analysis examines how population density, energy consumption, and green area size influence temperatures in urban areas, making it essential to investigate temperature variations at a granular level. This will ultimately form the foundation of our analysis work. Furthermore, cities within the same country often experience significant temperature differences due to factors like local conditions or more broadly, proximity to the equator. For this reason, we prioritized and used city temperatures over country-level averages to capture these critical nuances more accurately.
 
-As we obtained the country and city temperature datasets separately, we combined them using a left join on the city's dataset with the country's dataset. Given that we are focusing our analysis on city-level, this merging technique will retain city-specific details and create a country-city spatial dataframe that is comprehensive for us to start on our analysis. 
+As we obtained the country and city temperature datasets separately, we combined them using a left join on the city's dataset with the country's dataset. Given that we are focusing our analysis on city-level, this merging technique will retain city-specific details and create a city spatial dataframe that is comprehensive for us to start on our analysis. 
 
 ### LIMITATION
 We recognise the following data limitations in our analysis: 
