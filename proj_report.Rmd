@@ -411,7 +411,7 @@ cleaned_temp_data$weighted_city_avg_temp <- mapply(weighted_avg_func, avg_temper
 
 **Analysis/Observation:** 
 
-# STEP 03 - METHODS AND MODELINGS
+# STEP 03 - PREDICTIVE MODELLING
 
 ```{r echo=FALSE, warning = FALSE, message = FALSE}
 
@@ -419,18 +419,412 @@ cleaned_temp_data$weighted_city_avg_temp <- mapply(weighted_avg_func, avg_temper
 
 **Analysis/Observation:** 
 
+# STEP 04 - SPATIAL ANALYSIS
+
+This section of the report presents various spatial analyses to investigate the correlation of city temperatures with population density and energy consumption using city temperature data from the 2010s. By visualizing and analyzing temperature data across cities worldwide, we aim to understand spatial patterns and identify areas with significant temperature density.
+
+## Spatial Visualization: City Temperatures on a World Map
+
+To begin, we plot average city temperatures from the 2010s on a world map, using a color gradient to represent temperature variations. This visualization helps in identifying broad spatial patterns in temperature distribution.
+
+Relevance: This visualization highlights global temperature distribution, setting the stage for further spatial analyses of city temperatures.
 
 ```{r echo=FALSE, warning = FALSE, message = FALSE}
 
+library(ggplot2)
+library(viridis)
+library(sf)
+library(dplyr)
+
+# World map visualization
+ggplot() +
+  # Plot the world map polygons as background
+  geom_sf(data = world_map_df, fill = "grey80", color = "white") +
+  # Plot the points with color indicating temperature
+  geom_point(data = temp_points_2010s, aes(x = Longitude, y = Latitude, color = city_avg_temp), 
+             size = 1, alpha = 0.8) +
+  scale_color_viridis_c(option = "magma", name = "City Avg Temp (°C)") +
+  theme_minimal() +
+  labs(title = "City Temperature Across the World (2010s)",
+       x = "Longitude",
+       y = "Latitude")
+
+```
+# Point Pattern Analysis
+
+Point pattern analysis examines the spatial distribution of city temperatures to detect clustering or dispersal patterns. We use kernel density estimation (KDE) to analyze the density of temperature data points.
+
+## Preparing Data for Spatial Analysis
+We filter temperature data for the 2010s, convert it into an sf object for spatial processing, and clean the data by removing invalid coordinate ranges.
+
+```{r}
+# Filter data for the 2010s
+temp_data_2010s <- cleaned_temp_data %>%
+  filter(year >= 2010 & year <= 2019) %>%
+  dplyr::select(Longitude, Latitude, city_avg_temp) %>%
+  filter(!is.na(Longitude), !is.na(Latitude), !is.na(city_avg_temp))
+
+# Convert to sf object for spatial processing
+temp_points_sf <- st_as_sf(temp_data_2010s, coords = c("Longitude", "Latitude"), crs = 4326)
+
+# Clean coordinate data
+temp_points_sf <- temp_points_sf %>%
+  mutate(Longitude = st_coordinates(geometry)[, 1],
+         Latitude = st_coordinates(geometry)[, 2]) %>%
+  filter(Latitude >= -90, Latitude <= 90, Longitude >= -180, Longitude <= 180)
 ```
 
-**Analysis/Observation:** 
+## Kernel Density Estimation (KDE)
 
-# ANALYSIS
+KDE is performed to estimate the density of temperature data points, and contour lines are extracted to visualize the density distribution.
+
+```{r}
+# Compute the bandwidth matrix
+H <- Hpi(st_coordinates(temp_points_sf))
+
+# Perform KDE using the specified bandwidth matrix
+temp_kde <- st_kde(temp_points_sf, H = H)
+
+# Extract contour lines at specified levels
+contours <- st_get_contour(temp_kde, cont = c(10, 25, 50, 75, 95))
+contours$contlabel <- as.factor(contours$contlabel)
+```
+
+### Visualization of KDE and Density Contours
+
+The KDE results and density contours are overlaid on a world map, alongside city temperature points.
+
+Relevance: KDE and density contour analysis provide insights into high-temperature density regions, which are critical for understanding city temperature effects and their spatial patterns.
+
+```{r}
+ggplot() +
+  # World map as background
+  geom_sf(data = world_map_df, fill = "grey80", color = "white") +
+  # Temperature points
+  geom_sf(data = temp_points_sf, aes(color = city_avg_temp), size = 1, alpha = 0.7) +
+  # Density contours
+  geom_sf(data = contours, aes(fill = contlabel), color = "black", linetype = "solid") +
+  # Color scales
+  scale_color_viridis_c(name = "City Avg Temp (°C)") +
+  scale_fill_viridis_d(name = "Density Contours") +
+  # Labels and theme
+  labs(title = "City Temperature Density and Contour Analysis (2010s)", 
+       x = "Longitude", y = "Latitude") +
+  theme_minimal()
+```
+### Spatial Analysis with tmap
+
+Finally, we use tmap for an alternative visualization of temperature points and density contours, providing a detailed and interactive view.
+
+Relevance: The tmap visualization offers a polished view of spatial data, enhancing interpretability for urban planning and climate studies.
+
+```{r}
+library(tmap)
+
+# tmap visualization
+tmap_mode("plot")
+tm_shape(world_map) +
+  tm_polygons(col = "grey80", border.col = "white") +
+  tm_shape(temp_points_sf) +
+  tm_dots(col = "city_avg_temp", palette = "viridis", size = 0.5, alpha = 0.7, title = "City Avg Temp (°C)") +
+  tm_shape(contours) +
+  tm_polygons(col = "contlabel", palette = "viridis", title = "Density Contours", alpha = 0.5) +
+  tm_layout(title = "City Temperature Density and Contour Analysis (2010s)",
+            legend.outside = TRUE,
+            legend.outside.position = "right",
+            frame = FALSE)
+
+```
+**Analysis/Observation:**
+
+South America (Brazil & Argentina)
+High Density: Clusters in central Brazil around cities like Brasília and further south towards São Paulo and Rio de Janeiro.
+Temperature Range: Primarily warmer, with temperatures around 20°C to 40°C, indicated by yellow density contours.
+
+North America (USA)
+High Density: Significant clusters in the eastern United States, especially around the Midwest and Northeast regions, including cities like Chicago, New York, and Washington, D.C.
+Temperature Range: Mostly in the range of 0°C to 20°C, represented by blue contours, with cooler clusters in the northern areas.
+
+Europe
+High Density: Central Europe shows considerable density, covering countries like Germany, France, and northern Italy. Major cities likely within these clusters include Berlin, Paris, and Milan.
+Temperature Range: Predominantly in the 0°C to 20°C range, with some cooler temperatures extending north.
+
+Middle East and North Africa
+High Density: A strong concentration is seen around the Mediterranean region, including parts of Egypt and northern Saudi Arabia, as well as cities like Cairo and Riyadh.
+Temperature Range: Warmer zones with 20°C to 40°C, marked by yellow contours.
+
+South Asia (India)
+High Density: India shows significant clustering, especially around northern and central areas, including cities like New Delhi and Mumbai.
+Temperature Range: Mostly warm, between 20°C to 40°C, with the density reflecting a large urban population in warmer climates.
+
+East Asia (China & Japan)
+High Density: Clusters are noticeable around major urban centers like Beijing and Shanghai in China and Tokyo in Japan.
+Temperature Range: Varied, with parts around 0°C to 20°C and some warmer regions in the south.
+
+Australia
+High Density: Clusters appear along the eastern coast, particularly around cities like Sydney and Melbourne.
+Temperature Range: Warmer clusters around 0°C to 20°C, likely due to milder climate conditions in urban centers.
+
+
+## Second Order Point Pattern Analysis
+
+Second-order point pattern analysis examines the spatial relationships between points at varying distances. Ripley's K-function and the derived L-function are used to evaluate clustering or dispersion patterns in city temperature data.
+
+### Moran's I and Study Window Definition
+
+First, the spatial data is converted into a spatstat point pattern object, with a study window defined by the bounding box of the dataset. This step prepares the data for spatial statistical analyses.
+
+Relevance: Defining a study window is crucial for ensuring the spatial extent aligns with the dataset and for calculating spatial statistics accurately.
+
+```{r}
+library(spatstat)
+library(sf)
+
+# Define study window using bounding box
+bbox <- st_bbox(temp_points_sf)
+temp_ppp <- ppp(
+  x = st_coordinates(temp_points_sf)[, 1],
+  y = st_coordinates(temp_points_sf)[, 2],
+  window = owin(xrange = c(bbox["xmin"], bbox["xmax"]), yrange = c(bbox["ymin"], bbox["ymax"]))
+)
+```
+
+### Ripley's K-Function Analysis
+
+Ripley's K-function measures the cumulative number of neighboring points within increasing distances from each point. It is a standard tool for detecting clustering or regularity in spatial data.
+
+Relevance: Ripley's K-function provides insight into the spatial dependence of temperature points, helping to identify clustering or uniformity patterns.
+
+```{r}
+# Calculate Ripley's K-function
+K_result <- Kest(temp_ppp, correction = "Ripley")
+
+# Plot Ripley's K-function
+plot(K_result, main = "Ripley's K-function for Temperature Points",
+     xlab = "Distance", ylab = "K(d)")
+```
+### L-Function Analysis
+
+The L-function is a linearized transformation of Ripley's K-function. It adjusts for the effect of increasing area with distance, making the interpretation of clustering patterns more intuitive.
+
+Relevance: The L-function refines the clustering analysis, making it easier to interpret deviations from complete spatial randomness.
+
+```{r}
+# Calculate and plot the L-function
+L_result <- Lest(temp_ppp, correction = "Ripley")
+plot(L_result, main = "L-function for Temperature Points",
+     xlab = "Distance", ylab = "L(d) - d")
+```
+**Analysis/Observation:**
+
+In the K-function plot, the observed values (black line) are consistently above the theoretical values (red dashed line). This indicates clustering of temperature points at multiple spatial scales, suggesting that cities with similar temperatures are more likely to be found near each other rather than being randomly distributed.
+
+The L-function plot confirms the clustering seen in the K-function. The observed line lies above zero for most distances, further supporting the presence of spatial clustering among temperature points.
+
+Together with the KDE analysis, the clustering indicated by the K- and L-functions suggests that certain regions experience similar temperature patterns, potentially due to Urban Heat Island effects or geographical factors.
+
+# MAD Test for Ripley's K-Function and L-Function
+
+The Mean Absolute Deviation (MAD) test is used to evaluate the deviation of observed Ripley’s K-function and L-function from complete spatial randomness (CSR). This test helps to determine whether the observed spatial patterns are significantly clustered or dispersed.
+
+## MAD Test for Ripley’s K-Function
+
+The MAD test for Ripley's K-function assesses whether the spatial distribution of temperature points deviates significantly from a random distribution.
+
+```{r}
+# Perform the MAD test for Ripley's K-function
+mad_K <- mad.test(temp_ppp, Kest)
+print(mad_K)
+```
+
+## MAD Test for the L-Function
+
+Similarly, the MAD test for the L-function provides a refined evaluation of clustering or dispersion.
+
+```{r}
+# Perform the MAD test for the L-function
+mad_L <- mad.test(temp_ppp, Lest)
+print(mad_L)
+```
+
+**Analysis/Observation:**
+
+Test Statistic: These values measure the maximum deviation between observed and theoretical patterns, indicating how much the observed pattern deviates from what would be expected under Complete Spatial Randomness (CSR)
+
+P-value: A low p-value means there's a strong indication that the observed pattern is not random and that significant spatial structure (in this case clustering) exists.
+
+This significant clustering reinforces the hypothesis that urbanization and energy consumption may contribute to Urban Heat Island effects.
+
+# Spatial Attribute Analysis
+
+This section combines spatial attributes, including population and energy consumption, to analyze their effects on urban temperatures.
+
+## Data Preparation
+
+Relevant datasets for population, energy consumption, and temperature were filtered and joined to enable spatial and statistical analysis.
+
+```{r}
+# Filter temperature data for the 2010s
+cleaned_temp_data_2010s <- cleaned_temp_data %>%
+  filter(year >= 2010 & year <= 2019)
+
+# Prepare population data
+population_data <- population_data %>%
+  rename(Country = Country.Territory, Population_2015 = X2015.Population) %>%
+  select(Country, Population_2015)
+
+# Join population data with temperature data
+cleaned_temp_data_2010s <- cleaned_temp_data_2010s %>%
+  left_join(population_data, by = "Country") %>%
+  filter(!is.na(Population_2015))
+
+# Aggregate energy consumption by country and year
+total_energy_data <- energy_data %>%
+  group_by(Country, Year) %>%
+  summarize(Total_Energy_Consumption = sum(Energy_consumption, na.rm = TRUE)) %>%
+  ungroup()
+
+# Convert `Year` to character and join energy data
+total_energy_data <- total_energy_data %>%
+  mutate(Year = as.character(Year))
+cleaned_temp_data_2010s <- cleaned_temp_data_2010s %>%
+  left_join(total_energy_data, by = c("Country", "year" = "Year")) %>%
+  filter(!is.na(Total_Energy_Consumption))
+```
+
+## Spatial Weight Matrix and GWR Analysis
+
+To analyze the spatial relationships, a subset of data was sampled, and spatial weight matrices were created. Geographically Weighted Regression (GWR) was applied to examine the local influence of population density and energy consumption on temperature.
+
+```{r}
+# Create spatial neighbors and weights
+coords <- st_coordinates(cleaned_temp_data_2010s_sf)
+set.seed(42)
+sample_data <- cleaned_temp_data_2010s_sf %>% sample_frac(0.1)
+coords_sample <- st_coordinates(sample_data)
+neighbors_sample <- dnearneigh(coords_sample, 0, 100000)
+weights_sample <- nb2listw(neighbors_sample, style = "W")
+
+# Find optimal bandwidth for GWR
+optimal_bw <- bw.gwr(city_avg_temp ~ Population_2015 + Total_Energy_Consumption, 
+                     data = as(sample_data, "Spatial"), approach = "AICc")
+
+# Run GWR model
+gwr_model <- gwr.basic(city_avg_temp ~ Population_2015 + Total_Energy_Consumption, 
+                       data = as(sample_data, "Spatial"), bw = optimal_bw)
+print(gwr_model)
+
+# Extract GWR coefficients
+sample_data$gwr_pop_coef <- gwr_model$SDF$Population_2015
+sample_data$gwr_energy_coef <- gwr_model$SDF$Total_Energy_Consumption
+```
+
+### Visualizing GWR Coefficients
+
+The GWR coefficients for population density and energy consumption were visualized to highlight their spatial variability.
+
+### Population Density Coefficient
+
+```{r}
+# Plot population density coefficient
+tm_shape(world_map) + 
+  tm_polygons(col = "grey90", border.col = "white", lwd = 0.5) +
+  tm_shape(sample_data) +
+  tm_dots("gwr_pop_coef", palette = "RdYlGn", title = "Population Density Coef", size = 0.2, alpha = 0.7) +
+  tm_layout(main.title = "GWR Coefficient for Population Density on Temperature", legend.outside = TRUE)
+```
+
+### Energy Consumption Coefficient
+
+```{r}
+# Plot energy consumption coefficient
+tm_shape(world_map) + 
+  tm_polygons(col = "grey90", border.col = "white", lwd = 0.5) +
+  tm_shape(sample_data) +
+  tm_dots("gwr_energy_coef", palette = "Spectral", title = "Energy Consumption Coef", size = 0.2, alpha = 0.7) +
+  tm_layout(main.title = "GWR Coefficient for Energy Consumption on Temperature", legend.outside = TRUE)
+```
+
+**Analysis/Observation:**
+
+The GWR coefficients for Population Density indicates areas with higher coefficients (shown in green) where population density has a stronger effect on temperature, possibly due to urban heat island effects linked to population concentration.
+
+We also see the GWR coefficients for Energy Consumption where areas with higher coefficients (in blue) suggest regions where energy consumption contributes significantly to temperature variations.
+
+By plotting these coefficients, we can identify regional hotspots where urbanization and energy use have the most impact on temperature.
+
+
+# Spatial Autocorrelation Analysis
+
+Spatial autocorrelation evaluates whether similar temperature values are clustered. The spatial lag was calculated to observe dependency among temperature values.
+
+```{r}
+# Calculate spatial lag for temperature
+sample_data$lagged_temp <- lag.listw(weights_sample, sample_data$city_avg_temp)
+
+# Plot for City Average Temperature
+city_avg_plot <- ggplot() +
+  geom_sf(data = world_map, fill = "gray90", color = "gray50") +
+  geom_sf(data = sample_data, aes(color = city_avg_temp), size = 1.5) +
+  scale_color_viridis_c(option = "C", name = "City Avg Temperature", limits = c(-30, 40)) +
+  labs(title = "City Average Temperature in Sampled Data") +
+  theme_minimal()
+
+# Plot for Spatially Lagged Temperature
+lagged_temp_plot <- ggplot() +
+  geom_sf(data = world_map, fill = "gray90", color = "gray50") +
+  geom_sf(data = sample_data, aes(color = lagged_temp), size = 1.5) +
+  scale_color_viridis_c(option = "C", name = "Lagged Temperature", limits = c(18.494, 18.499)) +
+  labs(title = "Spatially Lagged Temperature") +
+  theme_minimal()
+```
+
+**Analysis/Observation:**
+
+In the City Average Temperature map, each point represents the average temperature for a specific city in our sample data. The colors range from purple, showing the coldest areas, to yellow, representing the warmest. We can clearly see hotter regions, especially in parts of the Middle East, Africa, and South America, while cooler regions are spread across northern latitudes.
+
+In the Spatially Lagged Temperature map, each point reflects an average of temperatures in surrounding areas rather than just the individual city’s temperature. This lagged perspective smooths out local extremes, giving us a clearer sense of broader regional patterns. For example, we see a more consistent temperature gradient across continents, with fewer drastic variations compared to the left map.
+
+By comparing these maps, we can distinguish between areas where temperature is strongly influenced by local factors versus regions where neighboring areas show similar temperatures. This spatial perspective helps us detect regional temperature clustering, which could highlight broader environmental trends or urban effects on climate, such as the Urban Heat Island effect.
+
+In summary, the City Average Temperature map provides insight into local conditions, while the Spatially Lagged Temperature map emphasizes regional trends. Together, they offer a comprehensive view of how temperature varies across space and how neighboring areas influence these patterns.
 
 ----- Explanation ------
 
 # CONCLUSION
+
+## Conclusion
+
+### Key Insights
+
+This study has provided a comprehensive analysis of global temperature trends, the impact of urban attributes on temperature patterns, and spatial clustering effects. Key insights derived from the analysis are outlined below:
+
+#### Global Temperature Trends
+
+The exploratory analysis of temperature data over the past decade reveals a clear upward trend in global temperatures, consistent with the broader effects of global warming. This trend underscores the ongoing climate challenges faced by urban and rural regions alike, necessitating urgent attention and action to address rising temperatures worldwide.
+
+#### Predictive Modelling
+
+Through predictive modeling, the analysis identified that both energy consumption and population density have significant effects on urban temperatures. A polynomial model was found to offer an improved fit, capturing the non-linear relationships between these variables and temperature more effectively. This finding highlights the role of urban characteristics in amplifying temperature levels, particularly in densely populated and energy-intensive areas.
+
+#### Spatial Analysis
+
+The spatial analysis, employing Kernel Density Estimation (KDE) and spatial lag models, provided further insights into the distribution of high-temperature zones and the spread of the UHI effect.
+
+Kernel Density Estimation (KDE) revealed concentrated high-temperature densities in urban areas, underscoring the presence of UHI effects. These areas demonstrate elevated temperatures compared to surrounding regions.
+
+Spatial Lag Analysis demonstrated that temperature distributions are influenced not only by local urban characteristics but also by nearby urban areas. This finding indicates a regional spread of UHI effects, where temperature impacts extend beyond individual cities to affect neighboring regions as well.
+
+### Implications for Sustainable Urban Planning
+
+The findings from this analysis emphasize the critical need for sustainable urban planning strategies aimed at mitigating the impacts rising temperature trends in cities. Based on the results, the following recommendations are proposed for cities and urban planners:
+
+Increase Green Spaces: Expanding green areas, such as parks and tree-lined streets, can help reduce local temperatures, improve air quality, and provide recreational spaces for residents.
+
+Implement Energy-Efficient Infrastructure: Incorporating energy-efficient building designs, materials, and technologies can reduce urban energy consumption, which in turn can lower the urban temperature burden.
+Enforce Sustainable Development Policies: Developing and enforcing policies that prioritize climate resilience and sustainability will support long-term mitigation of UHI effects. These policies may include incentives for green building practices, zoning laws that promote open spaces, and investment in renewable energy sources.
+
+By adopting these strategies, urban areas can become more resilient to the effects of climate change, particularly the challenges posed by rising temperatures. These efforts are essential for creating healthier, more livable urban environments that are prepared for future climate scenarios.
 
 ----- Explanation ------
 
