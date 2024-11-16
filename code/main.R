@@ -56,30 +56,6 @@ library(GWmodel)
 library(patchwork)
 
 
-# DATA CONNECTION VIA GOOGLE DRIVE
-
-#Using Google Drive to connect to the csv files as advised by Prof. Pls install the GoogleDrive package above before running this chunk.
-download_file_fun <- function(file_id) {
-  # Download the file to the temporary location
-  temp_file <- tempfile(fileext = ".csv")
-  drive_download(as_id(file_id), path = temp_file, overwrite = TRUE)
-  # Read the CSV file from the temporary location
-  return(read_csv(temp_file))
-}
-
-##### File ID from Google Drive URL (For GlobalLandTemperaturesByCity)
-temp_cities_data <- download_file_fun("17lPSwGwt5HTMbIiaTkotfmuKlkKZAPcM")
-##### File ID from Google Drive URL (For GlobalLandTemperaturesByCountry)
-temp_country_data <- download_file_fun("1eUG98W8Mz6OURXim17SEYiFFtsz3oGpG")
-##### File ID from Google Drive URL (For world_population)
-population_data <- download_file_fun("1sAMaGYknHeDDwdTICCsqgfWBXcmw5Wtl")
-##### File ID from Google Drive URL (For energy)
-energy_data <- download_file_fun("1Oha-hiaJZCH9d4jJW-SN5GqcUJew9s1Z")
-##### File ID from Google Drive URL (For Share_of_green_areas_and_green_area_per_capita_in_cities_and_urban_areas_1990_-_2020)
-file_id_temp_green <- "1Yu75p6z9dXVbfIe9n2rb9QU7YBntvsyz"
-temp_green <-  tempfile(fileext = ".xlsx")
-drive_download(as_id(file_id_temp_green), path = temp_green, overwrite = TRUE)
-green_area_data <- read_excel(temp_green)
 
 ##### File ID from Google Drive URL (For HydroLAKES_polys_v10_shp)
 ### Commented out cause not possible to unzip and open all files in the folder
@@ -264,6 +240,8 @@ cleaned_temp_data <- cleaned_temp_data %>% filter(dt %in% overlapping_dt)
 # Replotting to check if the cities still have differing dates
 unique_dt_map_fun(cleaned_temp_data)
 
+#################################################################################################################
+
 # 2. DATA TRANSFORMATION
 ## Mathematical transformation on data columns (Exponentially Weighted Average)
 # Function to calculate the weighted average temperature (placing greater emphasis on dates that are closer to present date -> 1/(2^index))
@@ -305,6 +283,8 @@ yearly_weighted_temp <- cleaned_temp_data %>%
   group_by(City, year, Longitude, Latitude) %>%
   summarise(yearly_weighted_temp = sum(weighted_city_avg_temp, na.rm = TRUE), .groups = 'drop')
 
+#################################################################################################################
+
 # 3. EXPLORATORY DATA ANALYSIS (EDA)
 ## Plotting population throughout the decades
 avail_pop_years <- population_data %>% group_by(Year) %>% summarise(n = n())
@@ -334,6 +314,7 @@ ggplot(joined_city_pop_geo_df) +
     plot.title = element_text(hjust = 0.5),
     legend.position = "right"
   )
+
 ## Plotting energy throughout the decades
 # avail_energy_years <- energy_data %>% group_by(Year, Country) %>% summarise(Energy_consumption = sum(Energy_consumption, na.rm = TRUE), .groups = "drop")
 # filtered_cleaned_temp_with_energy_years <- cleaned_temp_data %>% filter(year %in% avail_energy_years$Year)
@@ -365,34 +346,34 @@ ggplot(joined_city_pop_geo_df) +
 #     legend.position = "right"
 #   )
 
-#########################################
+
 # Histogram for Country Average Temperature
 ggplot(cleaned_temp_data, aes(x = country_avg_temp)) +
-  geom_histogram(binwidth = 1, fill = "skyblue", color = "black") +
+  geom_histogram(binwidth = 1, fill = "orange", color = "black") +
   labs(title = "Distribution of Country Average Temperature", x = "Country Avg Temp", y = "Count")
 
 # Histogram for City Average Temperature
-ggplot(cleaned_temp_data, aes(x = city_avg_temp)) +
-  geom_histogram(binwidth = 1, fill = "salmon", color = "black") +
-  labs(title = "Distribution of City Average Temperature", x = "City Avg Temp", y = "Count")
+#ggplot(cleaned_temp_data, aes(x = city_avg_temp)) +
+#  geom_histogram(binwidth = 1, fill = "salmon", color = "black") +
+#  labs(title = "Distribution of City Average Temperature", x = "City Avg Temp", y = "Count")
 
 
 # Boxplot for Country Average Temperature
-ggplot(cleaned_temp_data, aes(y = country_avg_temp)) +
-  geom_boxplot(fill = "lightyellow") +
-  labs(title = "Boxplot of Country Average Temperature", y = "Country Avg Temp")
+#ggplot(cleaned_temp_data, aes(y = country_avg_temp)) +
+#  geom_boxplot(fill = "lightyellow") +
+#  labs(title = "Boxplot of Country Average Temperature", y = "Country Avg Temp")
 
 # Boxplot for City Average Temperature
-ggplot(cleaned_temp_data, aes(y = city_avg_temp)) +
-  geom_boxplot(fill = "lightgreen") +
-  labs(title = "Boxplot of City Average Temperature", y = "City Avg Temp")
+#ggplot(cleaned_temp_data, aes(y = city_avg_temp)) +
+#  geom_boxplot(fill = "lightgreen") +
+#  labs(title = "Boxplot of City Average Temperature", y = "City Avg Temp")
 
 
 # Correlation matrix
-cor_matrix <- cor(cleaned_temp_data %>% select(country_avg_temp, city_avg_temp, country_temp_uncertainty, city_temp_uncertainty), use = "complete.obs")
+#cor_matrix <- cor(cleaned_temp_data %>% select(country_avg_temp, city_avg_temp, country_temp_uncertainty, city_temp_uncertainty), use = "complete.obs")
 
 # Visualize the correlation matrix
-corrplot(cor_matrix, method = "circle")
+#corrplot(cor_matrix, method = "circle")
 
 # Average temperature by Country
 avg_temp_country <- cleaned_temp_data %>%
@@ -400,27 +381,71 @@ avg_temp_country <- cleaned_temp_data %>%
   summarise(mean_country_temp = mean(country_avg_temp, na.rm = TRUE)) %>%
   arrange(desc(mean_country_temp))
 
-# View the top 10 countries
-head(avg_temp_country, 10)
+
+# Calculate the top 10 countries with the highest average temperature
+top_10_countries <- avg_temp_country %>%
+  top_n(10, mean_country_temp) %>%
+  arrange(desc(mean_country_temp))
+
+# Plot the top 10 countries with a color gradient based on temperature
+ggplot(top_10_countries, aes(x = reorder(Country, -mean_country_temp), y = mean_country_temp, fill = mean_country_temp)) +
+  geom_bar(stat = "identity") +
+  scale_fill_gradient(low = "yellow", high = "red", name = "Avg Temperature (°C)") +
+  labs(title = "Top 10 Countries with Highest Average Temperature",
+       x = "Country", y = "Average Temperature (°C)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+#Plotting top 10 countries with the highest average temperature on map
+
+# Mark countries as 'Top 10' or 'Others' and assign temperatures only for top 10
+world_temp <- world_map %>%
+  left_join(avg_temp_country, by = c("name" = "Country")) %>%
+  mutate(
+    fill_color = ifelse(name %in% top_10_countries$Country, mean_country_temp, NA) # Top 10 countries get temperature, others NA
+  )
+
+# Plot the map
+ggplot(data = world_temp) +
+  geom_sf(aes(fill = fill_color), color = "gray70", size = 0.2) + # Single fill aesthetic
+  scale_fill_gradient(
+    low = "yellow", high = "red",
+    na.value = "lightgray",  # Gray for non-top-10 countries
+    name = "Avg Temp (°C)"
+  ) +
+  labs(
+    title = "Top 10 Hottest Countries by Average Temperature",
+    subtitle = "Highlighted with a yellow-to-red gradient, others in gray",
+    x = "Longitude",
+    y = "Latitude"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    legend.title = element_text(face = "bold"),
+    plot.title = element_text(face = "bold", size = 16),
+    plot.subtitle = element_text(size = 12)
+  )
 
 #monthly
-avg_temp_monthly <- cleaned_temp_data %>%
-  group_by(month = floor_date(dt, "month")) %>%
-  summarise(mean_temp = mean(city_avg_temp, na.rm = TRUE))
+#avg_temp_monthly <- cleaned_temp_data %>%
+#  group_by(month = floor_date(dt, "month")) %>%
+#  summarise(mean_temp = mean(city_avg_temp, na.rm = TRUE))
 
 # Plotting average temperature by month
-ggplot(avg_temp_monthly, aes(x = month, y = mean_temp)) +
-  geom_line(color = "blue") +
-  labs(title = "Average City Temperature Over Time (Monthly)", x = "Month", y = "Average Temperature") +
-  theme_minimal()
+#ggplot(avg_temp_monthly, aes(x = month, y = mean_temp)) +
+#  geom_line(color = "blue") +
+#  labs(title = "Average City Temperature Over Time (Monthly)", x = "Month", y = "Average Temperature") +
+#  theme_minimal()
 
 
-#yearly
+#Plotting average temperature by yearly
 avg_temp_yearly <- cleaned_temp_data %>%
   group_by(year = year(dt)) %>%
   summarise(mean_temp = mean(city_avg_temp, na.rm = TRUE))
 
-# Plotting average temperature by year
+# Plotting 
 ggplot(avg_temp_yearly, aes(x = year, y = mean_temp)) +
   geom_line(color = "blue") +
   labs(title = "Average City Temperature Over Time (Yearly)", x = "Year", y = "Average Temperature") +
@@ -430,25 +455,29 @@ ggplot(avg_temp_yearly, aes(x = year, y = mean_temp)) +
 ###Plotting world map with avg country temp
 
 # Aggregate temperature data across all years for each country
-overall_avg_temp <- cleaned_temp_data %>%
-  group_by(Country) %>%
-  summarise(avg_temp = mean(city_avg_temp, na.rm = TRUE))
+#overall_avg_temp <- cleaned_temp_data %>%
+#  group_by(Country) %>%
+#  summarise(avg_temp = mean(city_avg_temp, na.rm = TRUE))
 
 # Join with world shapefile data
-world_temp <- world_map %>%
-  inner_join(overall_avg_temp, by = c("name" = "Country"))
+#world_temp <- world_map %>%
+#  inner_join(overall_avg_temp, by = c("name" = "Country"))
 
 # Plot the map
-ggplot(data = world_temp) +
-  geom_sf(aes(fill = avg_temp), color = "gray70") +
-  scale_fill_viridis_c(option = "plasma", name = "Avg Temp (?C)", na.value = "lightgray") +
-  labs(title = "Average Temperature by Country", x = "Longitude", y = "Latitude") +
-  theme_minimal() +
-  geom_hline(yintercept = 0, color = "red", linetype = "dashed") +  # Equator line
-  coord_sf(ylim = c(-60, 90))  # Limit latitude to -60, 90 to avoid polar distortion
+#ggplot(data = world_temp) +
+#  geom_sf(aes(fill = avg_temp), color = "gray70") +
+#  scale_fill_viridis_c(option = "plasma", name = "Avg Temp (?C)", na.value = "lightgray") +
+#  labs(title = "Average Temperature by Country", x = "Longitude", y = "Latitude") +
+#  theme_minimal() +
+#  geom_hline(yintercept = 0, color = "red", linetype = "dashed") +  # Equator line
+#  coord_sf(ylim = c(-60, 90))  # Limit latitude to -60, 90 to avoid polar distortion
 
 
-####################################################################################   
+
+###Plotting world map with avg city and country temp
+
+
+#################################################################################################################  
 
 # 4. MODELLING ANALYSIS
 
@@ -583,7 +612,7 @@ ggplot(data.frame(Predicted = test_predictions, Actual = test_data$avg_temp), ae
        x = "Actual Temperature",
        y = "Predicted Temperature")
 
-####################################################################################
+#################################################################################################################
 
 # 5. SPATIAL ANALYTICS
 
