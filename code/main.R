@@ -369,11 +369,6 @@ ggplot(cleaned_temp_data, aes(x = country_avg_temp)) +
 #  labs(title = "Boxplot of City Average Temperature", y = "City Avg Temp")
 
 
-# Correlation matrix
-#cor_matrix <- cor(cleaned_temp_data %>% select(country_avg_temp, city_avg_temp, country_temp_uncertainty, city_temp_uncertainty), use = "complete.obs")
-
-# Visualize the correlation matrix
-#corrplot(cor_matrix, method = "circle")
 
 # Average temperature by Country
 avg_temp_country <- cleaned_temp_data %>%
@@ -428,7 +423,7 @@ ggplot(data = world_temp) +
     plot.subtitle = element_text(size = 12)
   )
 
-#monthly
+#Time series plot (monthly)
 #avg_temp_monthly <- cleaned_temp_data %>%
 #  group_by(month = floor_date(dt, "month")) %>%
 #  summarise(mean_temp = mean(city_avg_temp, na.rm = TRUE))
@@ -440,7 +435,7 @@ ggplot(data = world_temp) +
 #  theme_minimal()
 
 
-#Plotting average temperature by yearly
+#Time series plot (yealry)
 avg_temp_yearly <- cleaned_temp_data %>%
   group_by(year = year(dt)) %>%
   summarise(mean_temp = mean(city_avg_temp, na.rm = TRUE))
@@ -452,30 +447,50 @@ ggplot(avg_temp_yearly, aes(x = year, y = mean_temp)) +
   theme_minimal()
 
 
-###Plotting world map with avg country temp
-
+###Plotting world map with avg city and country temp
 # Aggregate temperature data across all years for each country
-#overall_avg_temp <- cleaned_temp_data %>%
-#  group_by(Country) %>%
-#  summarise(avg_temp = mean(city_avg_temp, na.rm = TRUE))
+overall_avg_temp <- cleaned_temp_data %>%
+  group_by(Country) %>%
+  summarise(avg_temp = mean(city_avg_temp, na.rm = TRUE))
+
+# Prepare city data
+city_points <- cleaned_temp_data %>%
+  filter(!is.na(city_avg_temp)) %>%
+  group_by(City, Latitude, Longitude) %>%
+  summarise(city_avg_temp = mean(city_avg_temp, na.rm = TRUE))
 
 # Join with world shapefile data
-#world_temp <- world_map %>%
-#  inner_join(overall_avg_temp, by = c("name" = "Country"))
+world_temp <- world_map %>%
+  inner_join(overall_avg_temp, by = c("name" = "Country"))
 
 # Plot the map
-#ggplot(data = world_temp) +
-#  geom_sf(aes(fill = avg_temp), color = "gray70") +
-#  scale_fill_viridis_c(option = "plasma", name = "Avg Temp (?C)", na.value = "lightgray") +
-#  labs(title = "Average Temperature by Country", x = "Longitude", y = "Latitude") +
-#  theme_minimal() +
-#  geom_hline(yintercept = 0, color = "red", linetype = "dashed") +  # Equator line
-#  coord_sf(ylim = c(-60, 90))  # Limit latitude to -60, 90 to avoid polar distortion
-
-
-
-###Plotting world map with avg city and country temp
-
+ggplot() +
+  # Country temperature layer
+  geom_sf(data = world_temp, aes(fill = avg_temp), color = "gray70") +
+  scale_fill_viridis_c(option = "plasma", name = "Country Avg Temp (°C)", na.value = "lightgray") +
+  # City temperature points
+  geom_point(data = city_points, aes(x = as.numeric(Longitude), y = as.numeric(Latitude), color = city_avg_temp), size = 2, alpha = 0.8) +
+  # Add border around city points for better visualization
+  geom_point(data = city_points, aes(x = as.numeric(Longitude), y = as.numeric(Latitude)), size = 2.5, shape = 1, color = "black") +
+  scale_color_viridis_c(option = "magma", name = "City Avg Temp (°C)") +
+  # Add title, labels, and equator line
+  labs(
+    title = "Average Temperatures of Countries and Cities",
+    subtitle = "Country temperatures represented by fill; city temperatures as points",
+    x = "Longitude",
+    y = "Latitude"
+  ) +
+  geom_hline(yintercept = 0, color = "red", linetype = "dashed") +  # Equator line
+  theme_minimal() +
+  coord_sf(ylim = c(-60, 90)) +  # Limit latitude to avoid polar distortion
+  theme(
+    legend.position = "bottom",  # Place legends at the bottom
+    legend.box = "vertical"
+  ) +
+  guides(
+    fill = guide_colorbar(title.position = "top", barwidth = 10, barheight = 0.5),  # Country temperature legend
+    color = guide_colorbar(title.position = "top", barwidth = 10, barheight = 0.5)   # City temperature legend
+  )
 
 #################################################################################################################  
 

@@ -405,11 +405,181 @@ cleaned_temp_data$weighted_city_avg_temp <- mapply(weighted_avg_func, avg_temper
 
 # STEP 02 - EXPLORATORY DATA ANALYSIS
 
-```{r echo=FALSE, warning = FALSE, message = FALSE}
+This section performs an in-depth analysis of temperature data to uncover the trends and highlight significant patterns before moving to further deep analysis. Throughout the overall process we have covered:
 
+*1. Yearly Trends in Average City Temperatures* : Line plots are used to visualize the changes in average city temperatures over time. This helps identify trends, such as global warming or cooling phases.
+
+Key Findings : The time series plot of average city temperatures shows a clear upward trend, indicating a consistent rise in temperatures over the years. This aligns with global warming trends and highlights the growing impact of climate change.
+
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+#Time series plot of average city temperature yearly
+avg_temp_yearly <- cleaned_temp_data %>%
+  group_by(year = year(dt)) %>%
+  summarise(mean_temp = mean(city_avg_temp, na.rm = TRUE))
+
+# Plotting average temperature by year
+ggplot(avg_temp_yearly, aes(x = year, y = mean_temp)) +
+  geom_line(color = "blue") +
+  labs(title = "Average City Temperature Over Time (Yearly)", x = "Year", y = "Average Temperature") +
+  theme_minimal()
+```
+
+
+*2. Understanding Temperature Distributions* : Histograms are used to visualize the distribution of average temperatures at the country level (and optionally at the city level). This helps identify the spread and concentration of temperatures across different regions.
+
+Key Findings : From the histograms, majority of countries and cities with high average temperatures fall within the range of 24 to 27°C. This indicates that regions with such temperature averages are most common in the dataset.
+
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+# Histogram for Country Average Temperature
+ggplot(cleaned_temp_data, aes(x = country_avg_temp)) +
+  geom_histogram(binwidth = 1, fill = "orange", color = "black") +
+  labs(title = "Distribution of Country Average Temperature", x = "Country Avg Temp", y = "Count")
+
+# Histogram for City Average Temperature
+#ggplot(cleaned_temp_data, aes(x = city_avg_temp)) +
+#  geom_histogram(binwidth = 1, fill = "salmon", color = "black") +
+#  labs(title = "Distribution of City Average Temperature", x = "City Avg Temp", y = "Count")
+```
+
+*3. Identifying Top 10 Hottest Countries* : The data is grouped by country, and the average temperature for each is calculated. The 10 hottest countries are identified based on their mean temperatures, highlighting regions with extreme heat.
+
+Key Findings : The analysis identified the top 10 hottest countries by their average temperature, listed as:
+Djibouti: 28.9°C ; Mali: 28.6°C ; Burkina Faso: 28.2°C ; Senegal: 28.1°C ; United Arab Emirates: 27.9°C ; Mauritania: 27.8°C ; Gambia: 27.7°C ; Niger: 27.6°C ; Benin: 27.3°C ; Chad: 27.2°C
+These countries are geographically located in regions known for their hot climates, such as Africa and the Middle East.
+
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+# Average temperature by Country
+avg_temp_country <- cleaned_temp_data %>%
+  group_by(Country) %>%
+  summarise(mean_country_temp = mean(country_avg_temp, na.rm = TRUE)) %>%
+  arrange(desc(mean_country_temp))
+
+
+# Calculate the top 10 countries with the highest average temperature
+top_10_countries <- avg_temp_country %>%
+  top_n(10, mean_country_temp) %>%
+  arrange(desc(mean_country_temp))
+```
+
+*4. Bar Plot for Temperature Rankings* :A bar chart is created to showcase the top 10 countries by their average temperatures. The chart uses a color gradient from yellow to red to emphasize the varying intensity of heat, making the visualization intuitive and impactful.
+
+Key Findings : The bar plot showcases these top 10 countries, with a heat gradient ranging from yellow (lower temperatures) to red (higher temperatures).This effectively emphasizes the intensity of heat in each country.
+
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+# Plot the top 10 countries with a color gradient based on temperature
+ggplot(top_10_countries, aes(x = reorder(Country, -mean_country_temp), y = mean_country_temp, fill = mean_country_temp)) +
+  geom_bar(stat = "identity") +
+  scale_fill_gradient(low = "yellow", high = "red", name = "Avg Temperature (°C)") +
+  labs(title = "Top 10 Countries with Highest Average Temperature",
+       x = "Country", y = "Average Temperature (°C)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+*5. Mapping Temperature Data* :A world map visualization highlights the top 10 hottest countries geographically. These countries are color-coded using a yellow-to-red gradient, while all other regions are displayed in gray for contrast. This map effectively combines spatial and statistical data to provide a clear global perspective.
+
+Key Findings : The world map visually represents the top 10 hottest countries with vibrant yellow-to-red coloring, while other countries are shaded in gray. This clear contrast highlights the extreme temperatures of these regions.
+Notably, the hottest countries are geographically close to the equator, aligning with the expectation of higher temperatures in equatorial regions due to consistent direct sunlight throughout the year.
+
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+#Plotting top 10 countries with the highest average temperature on map
+
+# Mark countries as 'Top 10' or 'Others' and assign temperatures only for top 10
+world_temp <- world_map %>%
+  left_join(avg_temp_country, by = c("name" = "Country")) %>%
+  mutate(
+    fill_color = ifelse(name %in% top_10_countries$Country, mean_country_temp, NA) # Top 10 countries get temperature, others NA
+  )
+
+# Plot the map
+ggplot(data = world_temp) +
+  geom_sf(aes(fill = fill_color), color = "gray70", size = 0.2) + # Single fill aesthetic
+  scale_fill_gradient(
+    low = "yellow", high = "red",
+    na.value = "lightgray",  # Gray for non-top-10 countries
+    name = "Avg Temp (°C)"
+  ) +
+  labs(
+    title = "Top 10 Hottest Countries by Average Temperature",
+    subtitle = "Highlighted with a yellow-to-red gradient, others in gray",
+    x = "Longitude",
+    y = "Latitude"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    legend.title = element_text(face = "bold"),
+    plot.title = element_text(face = "bold", size = 16),
+    plot.subtitle = element_text(size = 12)
+  )
+```
+
+*6. Global Heat Mapping* : A world map displays country-level average temperatures using a continuous color gradient, helping to understand the geographic distribution of heat across the globe.Cities are added to the map as points, with their sizes or colors representing their average temperatures. This layer enriches the visualization by connecting macro-level trends (countries) with micro-level data (cities).The addition of an equator line helps identify temperature patterns, emphasizing that the hottest regions are often located near the equator.
+
+Key Findings : The equator's proximity plays a crucial role in shaping the temperature profile of the world's hottest regions.Cities with extreme temperatures are geographically clustered, reflecting localized climatic conditions within the broader regional trends.
+
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+# Aggregate temperature data across all years for each country
+overall_avg_temp <- cleaned_temp_data %>%
+  group_by(Country) %>%
+  summarise(avg_temp = mean(city_avg_temp, na.rm = TRUE))
+
+# Prepare city data
+city_points <- cleaned_temp_data %>%
+  filter(!is.na(city_avg_temp)) %>%
+  group_by(City, Latitude, Longitude) %>%
+  summarise(city_avg_temp = mean(city_avg_temp, na.rm = TRUE))
+
+# Join with world shapefile data
+world_temp <- world_map %>%
+  inner_join(overall_avg_temp, by = c("name" = "Country"))
+
+# Plot the map
+ggplot() +
+  # Country temperature layer
+  geom_sf(data = world_temp, aes(fill = avg_temp), color = "gray70") +
+  scale_fill_viridis_c(option = "plasma", name = "Country Avg Temp (°C)", na.value = "lightgray") +
+  # City temperature points
+  geom_point(data = city_points, aes(x = as.numeric(Longitude), y = as.numeric(Latitude), color = city_avg_temp), size = 2, alpha = 0.8) +
+  # Add border around city points for better visualization
+  geom_point(data = city_points, aes(x = as.numeric(Longitude), y = as.numeric(Latitude)), size = 2.5, shape = 1, color = "black") +
+  scale_color_viridis_c(option = "magma", name = "City Avg Temp (°C)") +
+  # Add title, labels, and equator line
+  labs(
+    title = "Average Temperatures of Countries and Cities",
+    subtitle = "Country temperatures represented by fill; city temperatures as points",
+    x = "Longitude",
+    y = "Latitude"
+  ) +
+  geom_hline(yintercept = 0, color = "red", linetype = "dashed") +  # Equator line
+  theme_minimal() +
+  coord_sf(ylim = c(-60, 90)) +  # Limit latitude to avoid polar distortion
+  theme(
+    legend.position = "bottom",  # Place legends at the bottom
+    legend.box = "vertical"
+  ) +
+  guides(
+    fill = guide_colorbar(title.position = "top", barwidth = 10, barheight = 0.5),  # Country temperature legend
+    color = guide_colorbar(title.position = "top", barwidth = 10, barheight = 0.5)   # City temperature legend
+  )
 ```
 
 **Analysis/Observation:** 
+
+For the temperature distribution, histogram reveals that most countries and cities have an average temperature range between 24°C and 27°C. This range represents the regions with the highest frequency of occurrences in the dataset, reflecting common temperature norms in warmer parts of the globe.
+
+Countries such as Djibouti, Mali, Burkina Faso, and Senegal have consistently high average temperatures, exceeding 27°C. These regions are characterized by arid and semi-arid climates, often found in Africa and the Middle East.These temperatures align with expectations, as these countries experience extreme sunlight exposure and minimal rainfall
+
+The highlighted map clearly shows that the hottest countries are concentrated near the equator. This finding supports the relationship between equatorial proximity and elevated temperatures due to consistent direct solar radiation throughout the year.
+
+Regions with higher average temperatures are likely to face challenges such as heat-related health risks, water scarcity, and energy demand for cooling systems.These insights can aid in planning sustainable solutions such as heat-resistant infrastructure, water conservation strategies, and renewable energy initiatives.
+
+The city-level data aligns with the country-level analysis, confirming that cities within the hottest countries also experience elevated average temperatures. This emphasizes the need for targeted interventions in urban areas of equatorial regions.
+
+The time-series trend and increasing average temperatures over the years confirm the ongoing effects of global warming. This suggests the need for urgent climate adaptation and mitigation measures.
+
+Cities in the hottest countries contribute to the upward trend in average temperatures, possibly due to the population or energy or other external factors
 
 # STEP 03 - PREDICTIVE MODELLING
 
@@ -561,7 +731,9 @@ We can observe that there is an improvement from the regression models, the R-sq
 
 **Analysis/Observation:** 
 
+
 From all the 3 models conducted, we found out that energy consumption and population are key factors influencing temperature while green area shows weaker effects compared to the other two factors. Although random forest model provided the most robust predictions by explaining half of the data, a significant portion of the variability in temperature remains unexplained, indicating that other factors not included in the models could further enhance the predictions. 
+
 
 
 # STEP 04 - SPATIAL ANALYSIS
