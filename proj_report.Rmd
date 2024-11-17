@@ -244,7 +244,7 @@ cleaned_temp_data <- cleaned_temp_data %>% rename(
   )
 
 # Remove unnecessary column ("...1") in energy dataset
-green_area_data <- green_area_data[, -1]
+energy_data <- energy_data[, -1]
 
 # Check column classes and convert if required
 display_column_classes <- function(dataset, dataset_name) {
@@ -413,11 +413,156 @@ cleaned_temp_data$weighted_city_avg_temp <- mapply(weighted_avg_func, avg_temper
 
 # STEP 03 - PREDICTIVE MODELLING
 
+This section of the report presents predictive models to investigate the relationship between city temperatures with population, energy consumption and green area. The models aim to uncover how these factors interact and influence temperature. The analysis includes evaluating the significance of each predictor and comparing the accuracy of the models to discover insights.
+
+## Prepare Data For Predictive Modelling
+
+We first started off by joining the population, energy consumption and green area data into the temperature data using a left join operation, ensuring that each country's data was aligned by year. 
+
 ```{r echo=FALSE, warning = FALSE, message = FALSE}
+### Join Pop, energy, green area data to Temp data
+# 1. Filter out countries with year and average temp
+cleaned_temp_data_with_popenergygreen <- cleaned_temp_data %>%
+  group_by(Country, year) %>%
+  summarise(avg_temp = mean(city_avg_temp, na.rm = TRUE))
+
+# 2. Left join the pop data
+cleaned_temp_data_with_popenergygreen <- cleaned_temp_data_with_popenergygreen %>%
+  left_join(population_data %>% select(`Country/Territory`, `Year`, `Density (per kmÂ²)`, `Population`), by = c("Country" = "Country/Territory", "year" = "Year"))
+
+# 3. Find average energy consumption by country and year then left join to temp data
+energy_data_avg_byyear <- energy_data %>%
+  group_by(Country, Year) %>%
+  summarise(Average_Energy_Consumption = mean(Energy_consumption, na.rm = TRUE))
+
+cleaned_temp_data_with_popenergygreen <- cleaned_temp_data_with_popenergygreen %>%
+  left_join(energy_data_avg_byyear, by =  c("Country" = "Country", "year" = "Year"))
+
+# 4. Find average green area by country then left join the green area data
+green_area_data_avg_byyear <- green_area_data %>%
+  group_by(`Country or Territory Name`, `Year`) %>%
+  summarise(Average_share_of_green_area = mean(Average_share_of_green_area, na.rm = TRUE),
+            Green_area_per_capita = mean(Green_area_per_capita, na.rm = TRUE))
+
+cleaned_temp_data_with_popenergygreen <- cleaned_temp_data_with_popenergygreen %>%
+  left_join(green_area_data_avg_byyear, by = c("Country" = "Country or Territory Name", "year" = "Year"))
+
+# Remove NA rows and ungroup 
+cleaned_temp_data_with_popenergygreen <- cleaned_temp_data_with_popenergygreen %>%
+  na.omit() %>%
+  ungroup()
+```
+
+## Correlation Matrix
+
+We conducted a correlation matrix analysis to examine the relationships between temperature, population, energy consumption, and green area. The correlation matrix provided a comprehensive overview of the strength and direction of the linear relationships between these variables, helping to identify significant predictors of temperature. 
+
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+# Extract columns for correlation and calculate
+cor_with_temp <- cleaned_temp_data_with_popenergygreen %>%
+  select(avg_temp, Population, Average_Energy_Consumption, Average_share_of_green_area)
+
+cor_matrix_for_temp <- cor(cor_with_temp, use = "complete.obs")
+corrplot(cor_matrix_for_temp, method = "circle")
 
 ```
 
+We can observe that overall there are no strong correlation between the 3 factors and temperature, their correlation score are close to zero.
+
+## Regression model
+
+To further investigate the relationship between temperature and 3 factors, we uses both multiple regression and polynomial regression models. Multiple regression was used to model the relationship between the predictors and temperature, assuming a linear correlation between them. However, with the understanding that the correlation could be more complex, we extended the analysis with polynomial regression, which introduces non-linear terms to capture more complex relationships. 
+
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+print("Multiple Regression Model")
+# Regression model
+regression_model <- lm(avg_temp ~ Population + Average_Energy_Consumption + Average_share_of_green_area, 
+                       data = cleaned_temp_data_with_popenergygreen)
+summary(regression_model)$coefficients
+cat(paste("R-squared:", round(summary(regression_model)$r.squared,3)), "\n")
+cat(paste("Adjusted R-squared:", round(summary(regression_model)$adj.r.squared, 3)), "\n\n")
+
+# Set seed for prediction test
+set.seed(42)
+
+# Randomly sample 5 rows from Cleaned_temp_data to test prediction
+random_data_for_predict <- cleaned_temp_data_with_popenergygreen %>% sample_n(5)
+
+# Try predict with regression model
+regression_predictions <- predict(regression_model, newdata = random_data_for_predict)
+
+# Polynomial Regression
+print("Polynomial Regression Model")
+poly_model <- lm(avg_temp ~ poly(Population, 2) + poly(Average_Energy_Consumption, 2) + poly(Average_share_of_green_area, 2), data = cleaned_temp_data_with_popenergygreen)
+summary(poly_model)$coefficients
+cat(paste("R-squared:", round(summary(poly_model)$r.squared,3)), "\n")
+cat(paste("Adjusted R-squared:", round(summary(poly_model)$adj.r.squared, 3)), "\n")
+
+# Try predict with polynomial model
+poly_predictions <- predict(poly_model, newdata = random_data_for_predict)
+
+# Join prediction into random data for view
+random_data_for_predict <- random_data_for_predict %>%
+  mutate(Multiple_regression_predictions = regression_predictions, Polynomial_regression_predictions = poly_predictions) 
+
+random_data_for_predict_selected <- random_data_for_predict[, c("avg_temp", "Multiple_regression_predictions", "Polynomial_regression_predictions")]
+knitr::kable(random_data_for_predict_selected, caption = "Regression Models Predictions")
+```
+We can see that populations and energy consumption have p-value lower than 0.05 suggesting significant effects on temperature. And although Multiple R-squared and Adjusted R-squared has improved from multiple regression model to polynomial regression model, they are still relatively low, only 7.45% and 27.6% of temperature in the data can be explained by the models. This suggest that there might be other factors that could better explain the temperature differences.
+
+## Random Forest
+
+Next, we applied random forest model to predict the relationship between temperature and the 3 factors. Random forest has the ability to handle complex, non-linear relationships and allowing us to understand how much each factor contributes to temperature variations. 
+
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+#Random Forest
+library(randomForest)
+print("Random Forest Model")
+set.seed(42)
+
+# Split data for random forest 
+train_indices <- sample(1:nrow(cleaned_temp_data_with_popenergygreen), 0.8 * nrow(cleaned_temp_data_with_popenergygreen))
+train_data <- cleaned_temp_data_with_popenergygreen[train_indices, ]
+test_data <- cleaned_temp_data_with_popenergygreen[-train_indices, ]
+
+# Random Forest model
+rf_model <- randomForest(avg_temp ~ Population + Average_Energy_Consumption + Average_share_of_green_area, data = train_data)
+
+# Predict using random forest
+test_predictions <- predict(rf_model, newdata = test_data)
+rmse <- sqrt(mean((test_predictions - test_data$avg_temp)^2))
+cat("Root mean squared error:", round(rmse,3), "\n")
+rsq <- 1 - sum((test_predictions - test_data$avg_temp)^2) / sum((test_data$avg_temp - mean(test_data$avg_temp))^2)
+cat("R-squared:", round(rsq,3), "\n")
+n <- nrow(test_data)
+adj_rsq <- 1 - ((1 - rsq) * (n - 1)) / (n - 3 - 1)
+cat("Adjusted R-squared:", round(adj_rsq,3), "\n")
+
+# Plot random forest the importance of each predictors
+importance_values <- importance(rf_model)
+importance_df <- data.frame(Feature = rownames(importance_values), Importance = importance_values[, 1])
+ggplot(importance_df, aes(x = reorder(Feature, Importance), y = Importance)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  coord_flip() +
+  geom_text(aes(label = round(importance_values, 2)), hjust = 1.2, color = "black", size = 3) +
+  labs(title = "Importance of predictors in RF Model",
+       x = "Predictors",
+       y = "Importance Value") 
+
+# Plot to see how many points' predictions are close to actual temp
+ggplot(data.frame(Predicted = test_predictions, Actual = test_data$avg_temp), aes(x = Actual, y = Predicted)) +
+  geom_point(color = "blue") +
+  geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed") +
+  labs(title = "Predicted vs. Actual Temperature",
+       x = "Actual Temperature",
+       y = "Predicted Temperature")
+```
+We can observe that there is an improvement from the regression models, the R-squared values has improved. Given a R-squared of 0.578, around 58% of the temperature in the data can be explained by the model, capturing a good portion of the temperature variance based on the 3 factors. The value for importance of predictors indicate how much each predictor contributes to the predictive accuracy of the model. This model saw energy consumption being the most influential factor. When we plot them on a plot, we can see that there are points close to the line, suggesting minor differences between predicted and actual value.
+
 **Analysis/Observation:** 
+
+From all the 3 models conducted, we found out that energy consumption and population are key factors influencing temperature while green area shows weaker effects compared to the other two factors. Although random forest model provided the most robust predictions by explaining half of the data, a significant portion of the variability in temperature remains unexplained, indicating that other factors not included in the models could further enhance the predictions. 
+
 
 # STEP 04 - SPATIAL ANALYSIS
 
@@ -443,7 +588,7 @@ ggplot() +
   # Plot the points with color indicating temperature
   geom_point(data = temp_points_2010s, aes(x = Longitude, y = Latitude, color = city_avg_temp), 
              size = 1, alpha = 0.8) +
-  scale_color_viridis_c(option = "magma", name = "City Avg Temp (°C)") +
+  scale_color_viridis_c(option = "magma", name = "City Avg Temp (?C)") +
   theme_minimal() +
   labs(title = "City Temperature Across the World (2010s)",
        x = "Longitude",
@@ -505,7 +650,7 @@ ggplot() +
   # Density contours
   geom_sf(data = contours, aes(fill = contlabel), color = "black", linetype = "solid") +
   # Color scales
-  scale_color_viridis_c(name = "City Avg Temp (°C)") +
+  scale_color_viridis_c(name = "City Avg Temp (?C)") +
   scale_fill_viridis_d(name = "Density Contours") +
   # Labels and theme
   labs(title = "City Temperature Density and Contour Analysis (2010s)", 
@@ -526,7 +671,7 @@ tmap_mode("plot")
 tm_shape(world_map) +
   tm_polygons(col = "grey80", border.col = "white") +
   tm_shape(temp_points_sf) +
-  tm_dots(col = "city_avg_temp", palette = "viridis", size = 0.5, alpha = 0.7, title = "City Avg Temp (°C)") +
+  tm_dots(col = "city_avg_temp", palette = "viridis", size = 0.5, alpha = 0.7, title = "City Avg Temp (?C)") +
   tm_shape(contours) +
   tm_polygons(col = "contlabel", palette = "viridis", title = "Density Contours", alpha = 0.5) +
   tm_layout(title = "City Temperature Density and Contour Analysis (2010s)",
@@ -538,32 +683,32 @@ tm_shape(world_map) +
 **Analysis/Observation:**
 
 South America (Brazil & Argentina)
-High Density: Clusters in central Brazil around cities like Brasília and further south towards São Paulo and Rio de Janeiro.
-Temperature Range: Primarily warmer, with temperatures around 20°C to 40°C, indicated by yellow density contours.
+High Density: Clusters in central Brazil around cities like Bras?lia and further south towards S?o Paulo and Rio de Janeiro.
+Temperature Range: Primarily warmer, with temperatures around 20?C to 40?C, indicated by yellow density contours.
 
 North America (USA)
 High Density: Significant clusters in the eastern United States, especially around the Midwest and Northeast regions, including cities like Chicago, New York, and Washington, D.C.
-Temperature Range: Mostly in the range of 0°C to 20°C, represented by blue contours, with cooler clusters in the northern areas.
+Temperature Range: Mostly in the range of 0?C to 20?C, represented by blue contours, with cooler clusters in the northern areas.
 
 Europe
 High Density: Central Europe shows considerable density, covering countries like Germany, France, and northern Italy. Major cities likely within these clusters include Berlin, Paris, and Milan.
-Temperature Range: Predominantly in the 0°C to 20°C range, with some cooler temperatures extending north.
+Temperature Range: Predominantly in the 0?C to 20?C range, with some cooler temperatures extending north.
 
 Middle East and North Africa
 High Density: A strong concentration is seen around the Mediterranean region, including parts of Egypt and northern Saudi Arabia, as well as cities like Cairo and Riyadh.
-Temperature Range: Warmer zones with 20°C to 40°C, marked by yellow contours.
+Temperature Range: Warmer zones with 20?C to 40?C, marked by yellow contours.
 
 South Asia (India)
 High Density: India shows significant clustering, especially around northern and central areas, including cities like New Delhi and Mumbai.
-Temperature Range: Mostly warm, between 20°C to 40°C, with the density reflecting a large urban population in warmer climates.
+Temperature Range: Mostly warm, between 20?C to 40?C, with the density reflecting a large urban population in warmer climates.
 
 East Asia (China & Japan)
 High Density: Clusters are noticeable around major urban centers like Beijing and Shanghai in China and Tokyo in Japan.
-Temperature Range: Varied, with parts around 0°C to 20°C and some warmer regions in the south.
+Temperature Range: Varied, with parts around 0?C to 20?C and some warmer regions in the south.
 
 Australia
 High Density: Clusters appear along the eastern coast, particularly around cities like Sydney and Melbourne.
-Temperature Range: Warmer clusters around 0°C to 20°C, likely due to milder climate conditions in urban centers.
+Temperature Range: Warmer clusters around 0?C to 20?C, likely due to milder climate conditions in urban centers.
 
 
 ## Second Order Point Pattern Analysis
@@ -625,9 +770,9 @@ Together with the KDE analysis, the clustering indicated by the K- and L-functio
 
 # MAD Test for Ripley's K-Function and L-Function
 
-The Mean Absolute Deviation (MAD) test is used to evaluate the deviation of observed Ripley’s K-function and L-function from complete spatial randomness (CSR). This test helps to determine whether the observed spatial patterns are significantly clustered or dispersed.
+The Mean Absolute Deviation (MAD) test is used to evaluate the deviation of observed Ripley?s K-function and L-function from complete spatial randomness (CSR). This test helps to determine whether the observed spatial patterns are significantly clustered or dispersed.
 
-## MAD Test for Ripley’s K-Function
+## MAD Test for Ripley?s K-Function
 
 The MAD test for Ripley's K-function assesses whether the spatial distribution of temperature points deviates significantly from a random distribution.
 
@@ -783,7 +928,7 @@ lagged_temp_plot <- ggplot() +
 
 In the City Average Temperature map, each point represents the average temperature for a specific city in our sample data. The colors range from purple, showing the coldest areas, to yellow, representing the warmest. We can clearly see hotter regions, especially in parts of the Middle East, Africa, and South America, while cooler regions are spread across northern latitudes.
 
-In the Spatially Lagged Temperature map, each point reflects an average of temperatures in surrounding areas rather than just the individual city’s temperature. This lagged perspective smooths out local extremes, giving us a clearer sense of broader regional patterns. For example, we see a more consistent temperature gradient across continents, with fewer drastic variations compared to the left map.
+In the Spatially Lagged Temperature map, each point reflects an average of temperatures in surrounding areas rather than just the individual city?s temperature. This lagged perspective smooths out local extremes, giving us a clearer sense of broader regional patterns. For example, we see a more consistent temperature gradient across continents, with fewer drastic variations compared to the left map.
 
 By comparing these maps, we can distinguish between areas where temperature is strongly influenced by local factors versus regions where neighboring areas show similar temperatures. This spatial perspective helps us detect regional temperature clustering, which could highlight broader environmental trends or urban effects on climate, such as the Urban Heat Island effect.
 
